@@ -133,21 +133,17 @@
       <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 max-w-2xl mx-auto text-xs md:text-sm">
         <div>
           <h2 class="font-bold text-base text-slate-900">外部API & アフィリエイト設定</h2>
-          <p class="text-slate-500 text-xs mt-0.5">Yahoo!ショッピングAPIや楽天APIキーを登録すると、自動で商品情報や価格を補完できます。</p>
+          <p class="text-slate-500 text-xs mt-0.5">取得したYahoo! JAPANのClient IDを設定すると、商品名や価格の自動補完機能が有効化されます。</p>
         </div>
 
         <div class="space-y-3 pt-2">
           <div>
             <label class="block font-medium mb-1 text-slate-700">Yahoo! JAPAN アプリケーションID (Client ID)</label>
-            <input type="text" id="settingYahooId" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50" placeholder="dj00aix...">
-          </div>
-          <div>
-            <label class="block font-medium mb-1 text-slate-700">楽天ウェブサービス アプリID (App ID)</label>
-            <input type="text" id="settingRakutenId" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50" placeholder="10xxxxxxxxxx">
+            <input type="text" id="settingYahooId" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 font-mono" placeholder="dj00aix...">
           </div>
           <div>
             <label class="block font-medium mb-1 text-slate-700">Amazon アソシエイト タグ (Tracking ID)</label>
-            <input type="text" id="settingAmazonTag" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50" placeholder="yourtag-22">
+            <input type="text" id="settingAmazonTag" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 font-mono" placeholder="yourtag-22">
           </div>
           <button onclick="saveSettings()" class="bg-blue-600 text-white font-medium px-4 py-2.5 rounded-lg hover:bg-blue-700 w-full transition shadow-sm">
             設定を保存する
@@ -185,7 +181,9 @@
           <label class="block font-medium text-slate-700 mb-1">商品名 <span class="text-red-500">*</span></label>
           <div class="flex gap-2">
             <input type="text" id="formName" required class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: エナジードリンク 250ml">
-            <button type="button" onclick="fetchProductByApi()" class="bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg text-slate-700 text-xs font-medium whitespace-nowrap border border-slate-300" title="Yahoo! APIで自動取得">Yahoo!API検索</button>
+            <button type="button" id="apiSearchBtn" onclick="fetchProductByYahooApi()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition shadow-sm">
+              <i class="fa-solid fa-magnifying-glass mr-1"></i>Yahoo!検索
+            </button>
           </div>
         </div>
 
@@ -247,7 +245,7 @@
 
     // --- アプリケーション状態 ---
     let currentUser = null;
-    let currentDbType = 'personal'; // 'personal' | 'open'
+    let currentDbType = 'personal';
     let selectedTag = null;
     let html5QrcodeScanner = null;
     let map = null;
@@ -264,23 +262,11 @@
           { name: "イオン", price: 108, date: "2026-10-15" }
         ],
         dbType: "open"
-      },
-      {
-        id: "item_2",
-        name: "コカ・コーラ 500ml PET",
-        jan: "4902102072617",
-        tags: ["飲料", "炭酸"],
-        memo: "自動販売機よりスーパーが安い",
-        stores: [
-          { name: "ドン・キホーテ", price: 88, date: "2026-10-25" }
-        ],
-        dbType: "personal"
       }
     ];
 
     let appSettings = JSON.parse(localStorage.getItem('smart_item_settings')) || {
       yahooId: "",
-      rakutenId: "",
       amazonTag: ""
     };
 
@@ -489,11 +475,11 @@
     function openItemModalWithJan(jan) {
       openItemModal();
       document.getElementById('formJan').value = jan;
-      fetchProductByApi(jan);
+      fetchProductByYahooApi(jan);
     }
 
-    // --- Yahoo!ショッピングAPI連携 ---
-    async function fetchProductByApi(searchQuery = "") {
+    // --- Yahoo! API呼び出し (HTML単体でCORS回避プロキシ経由) ---
+    async function fetchProductByYahooApi(searchQuery = "") {
       const clientId = appSettings.yahooId;
       const jan = searchQuery || document.getElementById('formJan').value;
       const name = document.getElementById('formName').value;
@@ -505,33 +491,41 @@
       }
 
       if (!clientId) {
-        alert("Yahoo! APIの Client ID が設定されていません。「API・EC設定」タブから設定してください。");
+        alert("Yahoo! APIの Client ID が設定されていません。「API・EC設定」タブから登録してください。");
         return;
       }
 
+      const btn = document.getElementById('apiSearchBtn');
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>検索中...`;
+
       try {
-        // Yahoo!ショッピング 商品検索API v3 (CORS回避のためクロスドメイン対応プロキシやブラウザ直接リクエスト)
-        // ※ブラウザから直接Yahoo! APIを叩く場合、環境によってはCORS制限がかかるため、その際は「設定リンク」としての利用も想定されます。
-        const url = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${clientId}&query=${encodeURIComponent(query)}&results=1`;
-        
-        const res = await fetch(url);
+        // Yahoo!ショッピング API URL
+        const targetUrl = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?appid=${clientId}&query=${encodeURIComponent(query)}&results=1`;
+        // CORS制限回避のためのプロキシ
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+        const res = await fetch(proxyUrl);
         const data = await res.json();
-        
+
         if (data.hits && data.hits.length > 0) {
           const item = data.hits[0];
           document.getElementById('formName').value = item.name;
           if (item.code) document.getElementById('formJan').value = item.code;
           if (item.price) {
             document.getElementById('formPrice').value = item.price;
-            document.getElementById('formStore').value = item.store.name || "Yahoo!ショップ";
+            document.getElementById('formStore').value = (item.store && item.store.name) ? item.store.name : "Yahoo!ショップ";
           }
-          alert("Yahoo!ショッピングAPIから商品情報を取得しました！");
+          alert(`Yahoo!ショッピングから取得完了！\n価格: ¥${Number(item.price).toLocaleString()}`);
         } else {
           alert("該当する商品が見つかりませんでした。");
         }
       } catch (e) {
-        console.error("API取得エラー", e);
-        alert("APIの呼び出しに失敗しました（ブラウザのCORS制限またはAPIキーをご確認ください）。");
+        console.error("API呼び出しエラー", e);
+        alert("APIの呼び出しに失敗しました。Client IDが正しいかご確認ください。");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i>Yahoo!検索`;
       }
     }
 
@@ -559,7 +553,7 @@
         document.getElementById('formDate').value = item.stores[0].date || '';
       }
       document.getElementById('modalTitle').textContent = '商品を編集';
-      document.getElementById('deleteBtn').classList.remove('hidden'); // 削除ボタンを表示
+      document.getElementById('deleteBtn').classList.remove('hidden');
       document.getElementById('itemModal').classList.remove('hidden');
     }
 
@@ -644,7 +638,6 @@
     // --- 設定保存 ---
     function saveSettings() {
       appSettings.yahooId = document.getElementById('settingYahooId').value;
-      appSettings.rakutenId = document.getElementById('settingRakutenId').value;
       appSettings.amazonTag = document.getElementById('settingAmazonTag').value;
       localStorage.setItem('smart_item_settings', JSON.stringify(appSettings));
       alert("API・アフィリエイト設定を保存しました！");
@@ -652,7 +645,6 @@
 
     function loadSettingsToForm() {
       document.getElementById('settingYahooId').value = appSettings.yahooId || "";
-      document.getElementById('settingRakutenId').value = appSettings.rakutenId || "";
       document.getElementById('settingAmazonTag').value = appSettings.amazonTag || "";
     }
 
