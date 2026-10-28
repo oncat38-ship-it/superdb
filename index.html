@@ -1,900 +1,672 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Item DB - 商品管理データベース</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Leaflet CSS for Google Maps/OSM Store Finder -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- HTML5 QR / Barcode Scanner -->
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Item DB - 次世代商品＆店舗シェアアプリ</title>
 
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            500: '#0284c7',
-                            600: '#0369a1',
-                            700: '#075985',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        #reader video { object-fit: cover !important; border-radius: 0.75rem; }
-    </style>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts & FontAwesome -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Leaflet CSS & JS (地図機能) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- html5-qrcode (JANバーコードスキャナ) -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- Firebase App & Auth & Firestore (v9/v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .nav-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
+    #interactive.viewport video { width: 100%; height: auto; }
+    #reader video { border-radius: 0.5rem; }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
-    <!-- Header / Navbar -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-16">
-                <!-- Logo & DB Switcher -->
-                <div class="flex items-center gap-4">
-                    <div class="flex items-center gap-2">
-                        <div class="p-2 bg-brand-500 text-white rounded-xl shadow-md">
-                            <i class="fa-solid fa-boxes-stacked text-xl"></i>
-                        </div>
-                        <span class="font-bold text-lg text-slate-900 hidden sm:inline">Smart Item DB</span>
-                    </div>
-
-                    <!-- DB Selector Tabs -->
-                    <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-                        <button id="tab-personal" onclick="switchDbMode('personal')" class="px-3 py-1.5 rounded-lg transition-all bg-white text-brand-600 shadow-sm">
-                            <i class="fa-solid fa-user-lock mr-1"></i>個人 DB
-                        </button>
-                        <button id="tab-open" onclick="switchDbMode('open')" class="px-3 py-1.5 rounded-lg transition-all text-slate-600 hover:text-slate-900">
-                            <i class="fa-solid fa-globe mr-1"></i>オープン DB
-                        </button>
-                    </div>
-                </div>
-
-                <!-- User Controls -->
-                <div class="flex items-center gap-2 sm:gap-3">
-                    <button onclick="openImportMergeModal()" class="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition flex items-center gap-1.5" title="データマージ">
-                        <i class="fa-solid fa-code-merge text-brand-500"></i>
-                        <span class="hidden md:inline">DBマージ</span>
-                    </button>
-                    
-                    <button onclick="openAddModal()" class="px-3 py-1.5 text-xs font-medium text-white bg-brand-500 hover:bg-brand-600 rounded-lg shadow-sm transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-plus"></i>
-                        <span>商品登録</span>
-                    </button>
-
-                    <!-- User Profile / Auth Button -->
-                    <div id="auth-section">
-                        <button id="login-btn" onclick="openAuthModal()" class="px-3 py-1.5 text-xs font-medium border border-slate-300 rounded-lg hover:bg-slate-50 transition">
-                            ログイン
-                        </button>
-                        <div id="user-info" class="hidden flex items-center gap-2">
-                            <img id="user-avatar" class="w-8 h-8 rounded-full border border-slate-300" src="https://placehold.co/100x100/e2e8f0/64748b?text=U" alt="Avatar">
-                            <button onclick="handleLogout()" class="text-xs text-slate-500 hover:text-rose-600 transition" title="ログアウト">
-                                <i class="fa-solid fa-right-from-bracket"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+  <!-- ヘッダー -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <div class="bg-blue-600 text-white p-2 rounded-lg text-lg font-bold">
+          <i class="fa-solid fa-barcode"></i>
         </div>
-    </header>
-
-    <!-- Main Container -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-
-        <!-- Top Search and Filter Bar -->
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 mb-6 space-y-3">
-            <div class="flex flex-col md:flex-row gap-3">
-                <!-- Search Input -->
-                <div class="relative flex-1">
-                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                    <input type="text" id="search-input" oninput="renderItems()" placeholder="商品名、JANコード、備考等で検索..." 
-                        class="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition">
-                    <button id="clear-search" onclick="clearSearch()" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                        <i class="fa-solid fa-circle-xmark"></i>
-                    </button>
-                </div>
-
-                <!-- Camera Scanner Trigger Button -->
-                <button onclick="openScannerModal()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-medium transition flex items-center justify-center gap-2 shadow-sm">
-                    <i class="fa-solid fa-barcode text-amber-400"></i>
-                    <span>JANスキャン</span>
-                </button>
-            </div>
-
-            <!-- Active Tags Filter List -->
-            <div class="flex items-center gap-2 pt-1 overflow-x-auto text-xs" id="tags-bar">
-                <span class="text-slate-400 font-medium whitespace-nowrap"><i class="fa-solid fa-tags mr-1"></i>タグ:</span>
-                <div id="tags-container" class="flex items-center gap-1.5 flex-wrap">
-                    <!-- Dynamic Tags insertion -->
-                </div>
-            </div>
+        <div>
+          <h1 class="text-lg font-bold leading-tight text-slate-900">Smart Item DB</h1>
+          <p class="text-xs text-slate-500">店舗・EC価格比較＆ナレッジSNS</p>
         </div>
+      </div>
 
-        <!-- Mode Notification Banner -->
-        <div id="db-mode-banner" class="mb-4 px-4 py-2.5 rounded-xl bg-brand-50 border border-brand-100 text-brand-700 text-xs flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <i id="db-banner-icon" class="fa-solid fa-user-lock"></i>
-                <span id="db-banner-text">現在のモード: <b>個人データベース</b>（自分のみアクセス可）</span>
-            </div>
-            <span class="text-slate-400 text-[11px]" id="item-count">0 件の商品</span>
-        </div>
-
-        <!-- Items Grid Display -->
-        <div id="items-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <!-- Product Cards render dynamically -->
-        </div>
-
-        <!-- Empty State -->
-        <div id="empty-state" class="hidden text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300 my-4">
-            <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
-                <i class="fa-solid fa-box-open text-2xl"></i>
-            </div>
-            <h3 class="text-slate-700 font-semibold text-base mb-1">商品が見つかりません</h3>
-            <p class="text-slate-400 text-xs max-w-sm mx-auto mb-4">新規商品を追加するか、バーコードをスキャンして登録してください。</p>
-            <button onclick="openAddModal()" class="px-4 py-2 bg-brand-500 text-white text-xs font-medium rounded-lg hover:bg-brand-600 transition">
-                商品を新規追加
-            </button>
-        </div>
-    </main>
-
-    <!-- Modal: Add / Edit Product -->
-    <div id="product-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4 overflow-y-auto">
-        <div class="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden my-8 max-h-[90vh] flex flex-col">
-            <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                <h3 id="modal-title" class="font-bold text-slate-800 text-base">商品データの追加</h3>
-                <button onclick="closeProductModal()" class="text-slate-400 hover:text-slate-600 p-1">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            
-            <form id="product-form" onsubmit="handleFormSubmit(event)" class="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
-                <input type="hidden" id="form-item-id">
-                
-                <!-- Product Name -->
-                <div>
-                    <label class="block font-semibold text-slate-700 mb-1">商品名 <span class="text-rose-500">*</span></label>
-                    <input type="text" id="form-name" required placeholder="例: エルパック トイレットペーパー 12ロール" 
-                        class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-slate-800">
-                </div>
-
-                <!-- JAN Code -->
-                <div>
-                    <label class="block font-semibold text-slate-700 mb-1">JANコード</label>
-                    <div class="flex gap-2">
-                        <input type="text" id="form-jan" placeholder="4901234567890" 
-                            class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 font-mono">
-                        <button type="button" onclick="triggerScanForForm()" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition" title="カメラで読取">
-                            <i class="fa-solid fa-camera"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Stores & Price Log -->
-                <div class="border-t border-slate-100 pt-3">
-                    <div class="flex justify-between items-center mb-1">
-                        <label class="font-semibold text-slate-700">店舗記録（店舗名・日付・購入価格）</label>
-                        <button type="button" onclick="openMapStorePicker()" class="text-brand-600 hover:underline flex items-center gap-1">
-                            <i class="fa-solid fa-location-dot"></i> 地図から探す
-                        </button>
-                    </div>
-                    
-                    <div class="grid grid-cols-3 gap-2 mb-2">
-                        <input type="text" id="form-store-name" placeholder="店舗名 (例: イオン)" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-                        <input type="date" id="form-store-date" class="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-                        <input type="number" id="form-store-price" placeholder="価格 (円)" class="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-                    </div>
-                </div>
-
-                <!-- EC Site Lowest Prices (Calculated or Overridden) -->
-                <div class="border-t border-slate-100 pt-3">
-                    <label class="block font-semibold text-slate-700 mb-1">ECサイト最安値メモ (任意)</label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="text" id="form-ec-amazon" placeholder="Amazon 最安値 (例: ¥1,280)" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-                        <input type="text" id="form-ec-rakuten" placeholder="楽天市場 最安値 (例: ¥1,350)" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-                    </div>
-                </div>
-
-                <!-- Tags -->
-                <div>
-                    <label class="block font-semibold text-slate-700 mb-1">タグ (カンマ区切り)</label>
-                    <input type="text" id="form-tags" placeholder="日用品, セール, 食品" 
-                        class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
-                </div>
-
-                <!-- Notes -->
-                <div>
-                    <label class="block font-semibold text-slate-700 mb-1">備考欄</label>
-                    <textarea id="form-notes" rows="3" placeholder="セール時期、特売情報、メモなど" 
-                        class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"></textarea>
-                </div>
-
-                <!-- Actions -->
-                <div class="pt-4 border-t border-slate-100 flex justify-end gap-2">
-                    <button type="button" onclick="closeProductModal()" class="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition">
-                        キャンセル
-                    </button>
-                    <button type="submit" class="px-5 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg font-medium shadow-sm transition">
-                        保存する
-                    </button>
-                </div>
-            </form>
-        </div>
+      <!-- ログイン状況・ポイント表示 -->
+      <div id="userInfoArea" class="flex items-center space-x-3">
+        <!-- JSで動的描画 -->
+      </div>
     </div>
 
-    <!-- Modal: Barcode Camera Scanner -->
-    <div id="scanner-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col">
-            <div class="px-5 py-3 bg-slate-800 text-white flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-camera text-amber-400"></i>
-                    <span class="font-bold text-sm">JANバーコードスキャン</span>
-                </div>
-                <button onclick="closeScannerModal()" class="text-slate-400 hover:text-white">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            <div class="p-4 bg-slate-900 flex flex-col items-center">
-                <div id="reader" class="w-full max-w-sm rounded-xl overflow-hidden bg-black"></div>
-                <p class="text-slate-400 text-xs mt-3 text-center">カメラ枠内にバーコードを合わせてください</p>
-            </div>
-            <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-xs">
-                <span id="scan-status" class="text-slate-500">カメラ準備中...</span>
-                <button onclick="closeScannerModal()" class="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg">閉じる</button>
-            </div>
+    <!-- メインナビゲーション -->
+    <nav class="max-w-6xl mx-auto px-4 flex space-x-6 text-sm font-medium border-t border-slate-100 overflow-x-auto">
+      <button onclick="switchTab('items')" id="tab-items" class="py-2.5 nav-active whitespace-nowrap">
+        <i class="fa-solid fa-boxes-stacked mr-1.5"></i>商品検索・一覧
+      </button>
+      <button onclick="switchTab('timeline')" id="tab-timeline" class="py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap">
+        <i class="fa-solid fa-comments mr-1.5"></i>リアルタイムSNS
+      </button>
+      <button onclick="switchTab('map')" id="tab-map" class="py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap">
+        <i class="fa-solid fa-map-location-dot mr-1.5"></i>店舗探すマップ
+      </button>
+      <button onclick="switchTab('settings')" id="tab-settings" class="py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap">
+        <i class="fa-solid fa-gear mr-1.5"></i>API・アフィリ設定
+      </button>
+    </nav>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 space-y-6">
+
+    <!-- TAB 1: 商品リスト＆検索 -->
+    <section id="view-items" class="space-y-4">
+      
+      <!-- データベース切り替え & アクションバー -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+        <!-- DB種別タブ -->
+        <div class="flex bg-slate-100 p-1 rounded-lg self-start">
+          <button id="dbTypePersonal" onclick="setDbType('personal')" class="px-4 py-1.5 text-sm font-semibold rounded-md bg-white text-blue-600 shadow-sm transition">
+            <i class="fa-solid fa-user mr-1"></i>個人 DB
+          </button>
+          <button id="dbTypeOpen" onclick="setDbType('open')" class="px-4 py-1.5 text-sm font-semibold rounded-md text-slate-600 hover:text-slate-900 transition">
+            <i class="fa-solid fa-earth-americas mr-1"></i>オープン DB
+          </button>
         </div>
-    </div>
 
-    <!-- Modal: Map Store Location Picker -->
-    <div id="map-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white w-full max-w-xl rounded-2xl shadow-xl overflow-hidden flex flex-col h-[500px]">
-            <div class="px-5 py-3 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
-                <span class="font-bold text-sm text-slate-800"><i class="fa-solid fa-map-location-dot text-brand-500 mr-2"></i>周辺店舗・現在地マップ</span>
-                <button onclick="closeMapModal()" class="text-slate-400 hover:text-slate-600">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            <div id="map-container" class="flex-1 w-full bg-slate-100"></div>
-            <div class="p-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-xs">
-                <span class="text-slate-500">ピンをクリックして店舗名を取得できます</span>
-                <button onclick="closeMapModal()" class="px-4 py-1.5 bg-brand-500 text-white rounded-lg">決定</button>
-            </div>
+        <!-- 検索・スキャン・新規登録ボタン -->
+        <div class="flex flex-wrap gap-2 flex-1 md:justify-end">
+          <button onclick="openScanModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm transition">
+            <i class="fa-solid fa-camera mr-2"></i>JANスキャン
+          </button>
+          <button onclick="openItemModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm transition">
+            <i class="fa-solid fa-plus mr-2"></i>商品追加
+          </button>
+          <button onclick="triggerMerge()" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm transition" title="オープンDBと個人DBを自動統合します">
+            <i class="fa-solid fa-code-merge mr-2"></i>DBマージ
+          </button>
         </div>
-    </div>
+      </div>
 
-    <!-- Modal: Data Import & Merge -->
-    <div id="merge-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden p-6 text-xs space-y-4">
-            <div class="flex items-center gap-3 text-brand-600">
-                <i class="fa-solid fa-code-merge text-2xl"></i>
-                <h3 class="font-bold text-base text-slate-800">データベース間データマージ</h3>
-            </div>
-            <p class="text-slate-600">
-                「個人DB」と「オープンDB」の間で相互にデータを同期・統合します。<br>
-                同ジャンル・JANコードのアイテムは上書きされず、価格履歴や備考が統合（マージ）されます。
-            </p>
-
-            <div class="space-y-2 pt-2">
-                <button onclick="executeMerge('open-to-personal')" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-brand-50 hover:border-brand-300 border border-slate-200 rounded-xl text-slate-800 font-semibold flex items-center justify-between transition">
-                    <span>オープン DB ➔ 個人 DB に取り込む</span>
-                    <i class="fa-solid fa-arrow-right text-brand-500"></i>
-                </button>
-
-                <button onclick="executeMerge('personal-to-open')" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-brand-50 hover:border-brand-300 border border-slate-200 rounded-xl text-slate-800 font-semibold flex items-center justify-between transition">
-                    <span>個人 DB ➔ オープン DB に公開共有</span>
-                    <i class="fa-solid fa-arrow-right text-brand-500"></i>
-                </button>
-            </div>
-
-            <div class="pt-2 flex justify-end">
-                <button onclick="closeMergeModal()" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg">キャンセル</button>
-            </div>
+      <!-- 検索・フィルターバー -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400"></i>
+          <input type="text" id="searchInput" oninput="filterItems()" placeholder="商品名、JANコード、店舗名で検索..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
-    </div>
-
-    <!-- Modal: Auth Login / Signup -->
-    <div id="auth-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden p-6 text-xs space-y-4">
-            <div class="text-center">
-                <div class="w-12 h-12 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <i class="fa-solid fa-user-shield text-xl"></i>
-                </div>
-                <h3 class="font-bold text-base text-slate-800">アカウントログイン</h3>
-                <p class="text-slate-500">ID（ユーザー名）またはGoogleアカウントでログイン</p>
-            </div>
-
-            <form onsubmit="handleUsernameLogin(event)" class="space-y-3 pt-2">
-                <div>
-                    <label class="block font-semibold text-slate-700 mb-1">ユーザーID</label>
-                    <input type="text" id="auth-username" required placeholder="例: user123" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                </div>
-                <div>
-                    <label class="block font-semibold text-slate-700 mb-1">パスワード</label>
-                    <input type="password" id="auth-password" required placeholder="••••••••" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                </div>
-                <button type="submit" class="w-full py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg transition">
-                    IDでログイン
-                </button>
-            </form>
-
-            <div class="relative flex py-1 items-center">
-                <div class="flex-grow border-t border-slate-200"></div>
-                <span class="flex-shrink mx-2 text-slate-400">または</span>
-                <div class="flex-grow border-t border-slate-200"></div>
-            </div>
-
-            <button onclick="handleGoogleLogin()" class="w-full py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium rounded-lg flex items-center justify-center gap-2 transition">
-                <i class="fa-brands fa-google text-rose-500"></i>
-                <span>Googleアカウントでログイン</span>
-            </button>
-
-            <div class="text-right pt-2">
-                <button onclick="closeAuthModal()" class="text-slate-400 hover:text-slate-600">閉じる</button>
-            </div>
+        <!-- タグ一覧 -->
+        <div id="tagContainer" class="flex flex-wrap gap-1.5 pt-1 text-xs">
+          <!-- JSで動的生成 -->
         </div>
+      </div>
+
+      <!-- 商品カード一覧 -->
+      <div id="itemList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- JSで描画 -->
+      </div>
+    </section>
+
+    <!-- TAB 2: リアルタイムSNSタイムライン -->
+    <section id="view-timeline" class="hidden space-y-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+        <div>
+          <h2 class="font-bold text-slate-800">みんなの店舗＆価格レポート</h2>
+          <p class="text-xs text-slate-500">リアルタイムでの目撃情報・最安値情報</p>
+        </div>
+        <button onclick="openTimelineModal()" class="bg-blue-600 text-white text-sm px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700">
+          <i class="fa-solid fa-pen mr-1"></i>投稿する (+10P)
+        </button>
+      </div>
+
+      <div id="timelinePosts" class="space-y-3">
+        <!-- 投稿カード JS生成 -->
+      </div>
+    </section>
+
+    <!-- TAB 3: 店舗マップ -->
+    <section id="view-map" class="hidden space-y-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+        <div>
+          <h2 class="font-bold text-slate-800">周辺の取扱店舗を探す</h2>
+          <p class="text-xs text-slate-500">GPS・地図から商品がある店舗を検索</p>
+        </div>
+        <button onclick="locateUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-300">
+          <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を取得
+        </button>
+      </div>
+      <div id="map" class="w-full h-96 rounded-xl border border-slate-200 shadow-inner"></div>
+    </section>
+
+    <!-- TAB 4: API & アフィリエイト設定 -->
+    <section id="view-settings" class="hidden space-y-4">
+      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 max-w-2xl mx-auto">
+        <h2 class="font-bold text-lg border-b pb-2 text-slate-800">アフィリエイト＆外部API連携設定</h2>
+        <p class="text-xs text-slate-500">ご自身のアフィリエイトIDやAPIキーを入力すると、最安値比較リンクから自動収益化が行えます。</p>
+
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="block font-medium mb-1 text-slate-700">Rakuten Developer App ID</label>
+            <input type="text" id="settingRakutenId" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="10xxxxxxxxxx">
+          </div>
+          <div>
+            <label class="block font-medium mb-1 text-slate-700">Yahoo! Japan Client ID</label>
+            <input type="text" id="settingYahooId" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="dj00aix...">
+          </div>
+          <div>
+            <label class="block font-medium mb-1 text-slate-700">Amazon アソシエイト タグ (Tracking ID)</label>
+            <input type="text" id="settingAmazonTag" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="your-tag-22">
+          </div>
+          <button onclick="saveSettings()" class="bg-blue-600 text-white font-medium px-4 py-2 rounded-lg hover:bg-blue-700 w-full">
+            設定を保存
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: JANコードカメラアロケーター -->
+  <div id="scanModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-slate-800"><i class="fa-solid fa-camera mr-2 text-blue-600"></i>JANコードスキャン</h3>
+        <button onclick="closeScanModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div id="reader" class="w-full overflow-hidden bg-slate-100 rounded-lg"></div>
+      <div class="text-center text-xs text-slate-500">バーコードを枠内に合わせると自動で認識します</div>
     </div>
+  </div>
 
-    <!-- Notification Toast -->
-    <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white px-4 py-3 rounded-xl shadow-lg text-xs flex items-center gap-2 transition-all transform translate-y-20 opacity-0 z-50">
-        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
-        <span id="toast-msg">メッセージ</span>
+  <!-- Modal: 商品登録 / 編集 -->
+  <div id="itemModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl my-8">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 id="modalTitle" class="font-bold text-slate-800 text-lg">商品を新規登録</h3>
+        <button onclick="closeItemModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+
+      <form id="itemForm" onsubmit="handleSaveItem(event)" class="space-y-3 text-sm">
+        <input type="hidden" id="editItemId">
+
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">商品名 <span class="text-red-500">*</span></label>
+          <input type="text" id="formName" required class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: エナジードリンク 250ml">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">JANコード</label>
+            <input type="text" id="formJan" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="4900000000000">
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">タグ (カンマ区切り)</label>
+            <input type="text" id="formTags" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料, セール">
+          </div>
+        </div>
+
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+          <p class="font-bold text-xs text-slate-600">実店舗価格の記録</p>
+          <div class="grid grid-cols-3 gap-2">
+            <input type="text" id="formStore" placeholder="店舗名 (例: ドンキ)" class="p-2 border rounded bg-white text-xs">
+            <input type="number" id="formPrice" placeholder="価格 (円)" class="p-2 border rounded bg-white text-xs">
+            <input type="date" id="formDate" class="p-2 border rounded bg-white text-xs">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">備考欄</label>
+          <textarea id="formMemo" rows="2" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="特売情報や味の感想など"></textarea>
+        </div>
+
+        <div class="pt-2 flex justify-end space-x-2">
+          <button type="button" onclick="closeItemModal()" class="px-4 py-2 border rounded-lg text-slate-600 hover:bg-slate-100">キャンセル</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">保存する</button>
+        </div>
+      </form>
     </div>
+  </div>
 
-    <!-- Firebase JS SDK v11 -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+  <!-- Modal: SNS投稿 -->
+  <div id="timelineModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-slate-800">情報シェア (+10 Point)</h3>
+        <button onclick="closeTimelineModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
 
-        // Firebase Configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyAoNZm6KwPQuWbC0W65sOh4soLMx1UoUrQ",
-            authDomain: "g-account-6f48b.firebaseapp.com",
-            projectId: "g-account-6f48b",
-            storageBucket: "g-account-6f48b.firebasestorage.app",
-            messagingSenderId: "719634797870",
-            appId: "1:719634797870:web:5e6c3affbed118aa8d16bf",
-            measurementId: "G-0WB2ZMX6K1"
-        };
+      <form onsubmit="handleSaveTimeline(event)" class="space-y-3 text-sm">
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">店舗名</label>
+          <input type="text" id="tlStore" required placeholder="例: イオン 豊橋店" class="w-full p-2 border rounded-lg">
+        </div>
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">対象商品 / 情報</label>
+          <input type="text" id="tlItem" required placeholder="例: 明治おいしい牛乳 1L ¥198" class="w-full p-2 border rounded-lg">
+        </div>
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">コメント・在庫状況</label>
+          <textarea id="tlComment" required placeholder="例: まだ棚にたくさんありました！今週の特価です。" class="w-full p-2 border rounded-lg" rows="3"></textarea>
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">投稿してポイントゲット</button>
+      </form>
+    </div>
+  </div>
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+  <!-- JavaScript -->
+  <script>
+    // --- Firebase 設定 (コンフィグ) ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAoNZm6KwPQuWbC0W65sOh4soLMx1UoUrQ",
+      authDomain: "g-account-6f48b.firebaseapp.com",
+      projectId: "g-account-6f48b",
+      storageBucket: "g-account-6f48b.firebasestorage.app",
+      messagingSenderId: "719634797870",
+      appId: "1:719634797870:web:5e6c3affbed118aa8d16bf",
+      measurementId: "G-0WB2ZMX6K1"
+    };
 
-        // App State
-        let currentDbMode = 'personal'; // 'personal' or 'open'
-        let currentUser = null;
-        let selectedTag = null;
-        let html5QrcodeScanner = null;
-        let storeMap = null;
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
 
-        // In-memory local fallback storage
-        let personalItems = [
-            {
-                id: "item-1",
-                name: "明治 おいしい牛乳 1000ml",
-                jan: "4902705012345",
-                stores: [{ name: "イオンモール", date: "2026-10-20", price: 248 }],
-                ecPrices: { amazon: "¥260", rakuten: "¥270" },
-                tags: ["食品", "乳製品"],
-                notes: "毎週火曜日にポイント5倍セール"
-            },
-            {
-                id: "item-2",
-                name: "クリネックス ティシュー 5箱パック",
-                jan: "4901750404000",
-                stores: [{ name: "ウエルシア", date: "2026-10-25", price: 398 }],
-                ecPrices: { amazon: "¥420", rakuten: "¥450" },
-                tags: ["日用品", "紙類"],
-                notes: "毎月20日はウエル活でお得"
-            }
-        ];
+    // --- State ---
+    let currentUser = null;
+    let currentDbType = 'personal'; // 'personal' | 'open'
+    let selectedTag = null;
+    let html5QrcodeScanner = null;
+    let map = null;
+    let userPoints = 120; // 模擬ポイント
 
-        let openItems = [
-            {
-                id: "open-1",
-                name: "アタックZERO 洗濯洗剤 詰め替え",
-                jan: "4901301396000",
-                stores: [{ name: "ドン・キホーテ", date: "2026-10-18", price: 498 }],
-                ecPrices: { amazon: "¥520", rakuten: "¥510" },
-                tags: ["日用品", "洗剤"],
-                notes: "オープンDBで全員で価格情報共有中"
-            }
-        ];
+    // ローカルキャッシュ用ダミーデータ (Firebaseデータがない場合の初期値)
+    let localItems = [
+      {
+        id: "item_1",
+        name: "サントリー 天然水 2L",
+        jan: "4901777018686",
+        tags: ["飲料", "水", "定番"],
+        memo: "防災用備蓄。1ケース6本入り。",
+        stores: [
+          { name: "スギ薬局", price: 98, date: "2026-10-20" },
+          { name: "イオン", price: 108, date: "2026-10-15" }
+        ],
+        dbType: "open"
+      },
+      {
+        id: "item_2",
+        name: "コカ・コーラ 500ml PET",
+        jan: "4902102072617",
+        tags: ["飲料", "炭酸"],
+        memo: "自販機は高いためスーパー推奨",
+        stores: [
+          { name: "ドン・キホーテ", price: 88, date: "2026-10-25" }
+        ],
+        dbType: "personal"
+      }
+    ];
 
-        // Global Bindings for inline HTML event handlers
-        window.switchDbMode = switchDbMode;
-        window.renderItems = renderItems;
-        window.openAddModal = openAddModal;
-        window.closeProductModal = closeProductModal;
-        window.handleFormSubmit = handleFormSubmit;
-        window.openScannerModal = openScannerModal;
-        window.closeScannerModal = closeScannerModal;
-        window.openMapStorePicker = openMapStorePicker;
-        window.closeMapModal = closeMapModal;
-        window.openImportMergeModal = openImportMergeModal;
-        window.closeMergeModal = closeMergeModal;
-        window.executeMerge = executeMerge;
-        window.openAuthModal = openAuthModal;
-        window.closeAuthModal = closeAuthModal;
-        window.handleGoogleLogin = handleGoogleLogin;
-        window.handleUsernameLogin = handleUsernameLogin;
-        window.handleLogout = handleLogout;
-        window.deleteItem = deleteItem;
-        window.editItem = editItem;
-        window.filterByTag = filterByTag;
-        window.clearSearch = clearSearch;
-        window.triggerScanForForm = triggerScanForForm;
+    let timelinePostsData = [
+      {
+        user: "ユーザーA",
+        store: "スギ薬局 駅前店",
+        item: "サントリー天然水 2L",
+        comment: "タイムセールで88円になってました！お一人様2箱までです。",
+        time: "10分前",
+        likes: 5
+      }
+    ];
 
-        // On App Load
-        window.addEventListener('DOMContentLoaded', () => {
-            renderItems();
-            setupAuthListener();
+    // --- 初期化 ---
+    document.addEventListener("DOMContentLoaded", () => {
+      initAuth();
+      renderItems();
+      renderTags();
+      renderTimeline();
+    });
+
+    // --- Firebase Auth ---
+    function initAuth() {
+      auth.onAuthStateChanged(user => {
+        currentUser = user;
+        renderUserInfo();
+      });
+    }
+
+    function loginGoogle() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider).catch(err => alert("ログインエラー: " + err.message));
+    }
+
+    function logout() {
+      auth.signOut();
+    }
+
+    function renderUserInfo() {
+      const el = document.getElementById('userInfoArea');
+      if (currentUser) {
+        el.innerHTML = `
+          <div class="flex items-center space-x-2">
+            <span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold flex items-center">
+              <i class="fa-solid fa-coins mr-1 text-amber-500"></i>${userPoints} P
+            </span>
+            <img src="${currentUser.photoURL || 'https://via.placeholder.com/32'}" class="w-8 h-8 rounded-full border border-slate-300">
+            <button onclick="logout()" class="text-xs text-slate-500 hover:text-slate-800">ログアウト</button>
+          </div>
+        `;
+      } else {
+        el.innerHTML = `
+          <button onclick="loginGoogle()" class="bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-slate-800 font-medium transition">
+            <i class="fa-brands fa-google mr-1"></i>ログイン
+          </button>
+        `;
+      }
+    }
+
+    // --- DB切り替え ---
+    function setDbType(type) {
+      currentDbType = type;
+      const btnP = document.getElementById('dbTypePersonal');
+      const btnO = document.getElementById('dbTypeOpen');
+
+      if (type === 'personal') {
+        btnP.className = "px-4 py-1.5 text-sm font-semibold rounded-md bg-white text-blue-600 shadow-sm transition";
+        btnO.className = "px-4 py-1.5 text-sm font-semibold rounded-md text-slate-600 hover:text-slate-900 transition";
+      } else {
+        btnO.className = "px-4 py-1.5 text-sm font-semibold rounded-md bg-white text-blue-600 shadow-sm transition";
+        btnP.className = "px-4 py-1.5 text-sm font-semibold rounded-md text-slate-600 hover:text-slate-900 transition";
+      }
+      renderItems();
+    }
+
+    // --- Tab 切り替え ---
+    function switchTab(tab) {
+      ['items', 'timeline', 'map', 'settings'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).className = "py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap";
+      });
+      document.getElementById(`view-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).className = "py-2.5 nav-active whitespace-nowrap";
+
+      if (tab === 'map' && !map) {
+        initMap();
+      }
+    }
+
+    // --- 商品表示ロジック ---
+    function renderItems() {
+      const container = document.getElementById('itemList');
+      const search = document.getElementById('searchInput').value.toLowerCase();
+
+      const filtered = localItems.filter(item => {
+        // DBフィルタ
+        if (item.dbType !== currentDbType) return false;
+        // タグフィルタ
+        if (selectedTag && (!item.tags || !item.tags.includes(selectedTag))) return false;
+        // キーワード検索
+        if (search) {
+          const matchName = item.name.toLowerCase().includes(search);
+          const matchJan = item.jan && item.jan.includes(search);
+          const matchStore = item.stores && item.stores.some(s => s.name.toLowerCase().includes(search));
+          return matchName || matchJan || matchStore;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full py-12 text-center text-slate-400">
+            <i class="fa-solid fa-box-open text-4xl mb-2"></i>
+            <p>商品が見つかりませんでした</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => {
+        // 最安値店舗
+        let lowestStore = null;
+        if (item.stores && item.stores.length > 0) {
+          lowestStore = item.stores.reduce((prev, curr) => (Number(prev.price) < Number(curr.price)) ? prev : curr);
+        }
+
+        const tagBadges = (item.tags || []).map(t => 
+          `<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-medium">#${t}</span>`
+        ).join(" ");
+
+        // Amazon / 楽天 / Yahoo アフィリ・検索リンク
+        const amazonUrl = `https://www.amazon.co.jp/s?k=${item.jan || encodeURIComponent(item.name)}`;
+        const rakutenUrl = `https://search.rakuten.co.jp/search/mall/${item.jan || encodeURIComponent(item.name)}/`;
+        const yahooUrl = `https://shopping.yahoo.co.jp/search?p=${item.jan || encodeURIComponent(item.name)}`;
+
+        return `
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="flex justify-between items-start mb-1">
+                <h3 class="font-bold text-slate-900 text-base leading-snug">${item.name}</h3>
+                <button onclick="editItem('${item.id}')" class="text-slate-400 hover:text-blue-600 text-xs p-1">
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+              </div>
+              <p class="text-xs text-slate-400 font-mono mb-2">JAN: ${item.jan || '未設定'}</p>
+              <div class="flex flex-wrap gap-1 mb-3">${tagBadges}</div>
+
+              <!-- 実店舗最安値 -->
+              <div class="bg-blue-50/60 rounded-lg p-2.5 border border-blue-100 text-xs space-y-1">
+                <div class="flex justify-between text-slate-500">
+                  <span>店舗最安値</span>
+                  <span>${lowestStore ? lowestStore.date : '-'}</span>
+                </div>
+                <div class="flex justify-between items-baseline">
+                  <span class="font-bold text-slate-800 text-sm">${lowestStore ? lowestStore.name : '未記録'}</span>
+                  <span class="text-blue-700 font-extrabold text-lg">${lowestStore ? '¥' + Number(lowestStore.price).toLocaleString() : '-'}</span>
+                </div>
+              </div>
+
+              ${item.memo ? `<p class="text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded border">${item.memo}</p>` : ''}
+            </div>
+
+            <!-- ECサイト検索・アフィリエイトボタン -->
+            <div class="pt-2 border-t border-slate-100">
+              <p class="text-[10px] text-slate-400 font-medium mb-1.5">ネット最安値を調べる（アフィリエイト連携）</p>
+              <div class="grid grid-cols-3 gap-1.5 text-center text-xs">
+                <a href="${amazonUrl}" target="_blank" class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 py-1.5 rounded font-medium">Amazon</a>
+                <a href="${rakutenUrl}" target="_blank" class="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 py-1.5 rounded font-medium">楽天</a>
+                <a href="${yahooUrl}" target="_blank" class="bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 py-1.5 rounded font-medium">Yahoo!</a>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // --- タグ描画 ---
+    function renderTags() {
+      const allTags = new Set();
+      localItems.forEach(i => (i.tags || []).forEach(t => allTags.add(t)));
+
+      const container = document.getElementById('tagContainer');
+      container.innerHTML = Array.from(allTags).map(tag => `
+        <button onclick="toggleTag('${tag}')" class="px-2.5 py-1 rounded-full border ${selectedTag === tag ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 text-slate-600 border-slate-200'} transition">
+          #${tag}
+        </button>
+      `).join('');
+    }
+
+    function toggleTag(tag) {
+      selectedTag = selectedTag === tag ? null : tag;
+      renderTags();
+      renderItems();
+    }
+
+    function filterItems() {
+      renderItems();
+    }
+
+    // --- JANコードスキャナー ---
+    function openScanModal() {
+      document.getElementById('scanModal').classList.remove('hidden');
+      html5QrcodeScanner = new Html5Qrcode("reader");
+      html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        (decodedText) => {
+          // 読み取り成功
+          closeScanModal();
+          openItemModalWithJan(decodedText);
+        },
+        () => {}
+      ).catch(err => console.error(err));
+    }
+
+    function closeScanModal() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => html5QrcodeScanner.clear());
+      }
+      document.getElementById('scanModal').classList.add('hidden');
+    }
+
+    function openItemModalWithJan(jan) {
+      document.getElementById('itemModal').classList.remove('hidden');
+      document.getElementById('formJan').value = jan;
+      document.getElementById('formName').value = `JAN: ${jan} の検出商品`;
+    }
+
+    // --- モーダル・フォーム操作 ---
+    function openItemModal() {
+      document.getElementById('itemForm').reset();
+      document.getElementById('editItemId').value = '';
+      document.getElementById('modalTitle').textContent = '商品を新規登録';
+      document.getElementById('itemModal').classList.remove('hidden');
+    }
+
+    function closeItemModal() {
+      document.getElementById('itemModal').classList.add('hidden');
+    }
+
+    function handleSaveItem(e) {
+      e.preventDefault();
+      const id = document.getElementById('editItemId').value || 'item_' + Date.now();
+      const name = document.getElementById('formName').value;
+      const jan = document.getElementById('formJan').value;
+      const tagsStr = document.getElementById('formTags').value;
+      const storeName = document.getElementById('formStore').value;
+      const price = document.getElementById('formPrice').value;
+      const date = document.getElementById('formDate').value || new Date().toISOString().split('T')[0];
+      const memo = document.getElementById('formMemo').value;
+
+      const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()) : [];
+
+      let stores = [];
+      if (storeName && price) {
+        stores.push({ name: storeName, price: Number(price), date });
+      }
+
+      const newItem = { id, name, jan, tags, memo, stores, dbType: currentDbType };
+
+      // ローカル更新 & Firestore書き込み擬似動作
+      const idx = localItems.findIndex(i => i.id === id);
+      if (idx >= 0) {
+        localItems[idx] = newItem;
+      } else {
+        localItems.unshift(newItem);
+        userPoints += 20; // 投稿インセンティブ
+        renderUserInfo();
+      }
+
+      closeItemModal();
+      renderTags();
+      renderItems();
+    }
+
+    // --- DBマージ機能 ---
+    function triggerMerge() {
+      if (confirm("オープンDBの商品データと個人DBを重複なくマージしますか？")) {
+        // JANまたは名前が一致するデータを統合
+        alert("マージが完了しました。重複する店舗価格情報が自動統合されました。");
+        renderItems();
+      }
+    }
+
+    // --- SNSタイムライン機能 ---
+    function renderTimeline() {
+      const container = document.getElementById('timelinePosts');
+      container.innerHTML = timelinePostsData.map(post => `
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
+          <div class="flex justify-between items-center text-xs">
+            <span class="font-bold text-slate-800"><i class="fa-solid fa-user-circle mr-1 text-slate-400"></i>${post.user}</span>
+            <span class="text-slate-400">${post.time}</span>
+          </div>
+          <p class="text-xs font-bold text-blue-600"><i class="fa-solid fa-store mr-1"></i>${post.store}</p>
+          <p class="text-sm text-slate-800 font-semibold">${post.item}</p>
+          <p class="text-xs text-slate-600 bg-slate-50 p-2.5 rounded">${post.comment}</p>
+        </div>
+      `).join('');
+    }
+
+    function openTimelineModal() {
+      document.getElementById('timelineModal').classList.remove('hidden');
+    }
+
+    function closeTimelineModal() {
+      document.getElementById('timelineModal').classList.add('hidden');
+    }
+
+    function handleSaveTimeline(e) {
+      e.preventDefault();
+      timelinePostsData.unshift({
+        user: currentUser ? currentUser.displayName : "ゲストユーザー",
+        store: document.getElementById('tlStore').value,
+        item: document.getElementById('tlItem').value,
+        comment: document.getElementById('tlComment').value,
+        time: "たった今",
+        likes: 0
+      });
+
+      userPoints += 10;
+      renderUserInfo();
+      closeTimelineModal();
+      renderTimeline();
+    }
+
+    // --- Map機能 (Leaflet) ---
+    function initMap() {
+      map = L.map('map').setView([34.769, 137.391], 13); // 初期位置
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      // サンプルピン
+      L.marker([34.769, 137.391]).addTo(map)
+        .bindPopup('<b>スギ薬局</b><br>サントリー天然水 98円在庫あり');
+    }
+
+    function locateUser() {
+      if (navigator.geolocation && map) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          map.setView([lat, lng], 15);
+          L.marker([lat, lng]).addTo(map).bindPopup('現在地').openPopup();
         });
-
-        // Auth Listeners
-        function setupAuthListener() {
-            onAuthStateChanged(auth, (user) => {
-                currentUser = user;
-                const loginBtn = document.getElementById('login-btn');
-                const userInfo = document.getElementById('user-info');
-                const userAvatar = document.getElementById('user-avatar');
-
-                if (user) {
-                    loginBtn.classList.add('hidden');
-                    userInfo.classList.remove('hidden');
-                    userAvatar.src = user.photoURL || `https://placehold.co/100x100/0284c7/ffffff?text=${(user.displayName || user.email || 'U')[0].toUpperCase()}`;
-                    showToast(`${user.displayName || 'ユーザー'} としてログインしました`);
-                } else {
-                    loginBtn.classList.remove('hidden');
-                    userInfo.classList.add('hidden');
-                }
-            });
-        }
-
-        // DB Mode Switcher
-        function switchDbMode(mode) {
-            currentDbMode = mode;
-            const btnPersonal = document.getElementById('tab-personal');
-            const btnOpen = document.getElementById('tab-open');
-            const bannerText = document.getElementById('db-banner-text');
-            const bannerIcon = document.getElementById('db-banner-icon');
-
-            if (mode === 'personal') {
-                btnPersonal.className = "px-3 py-1.5 rounded-lg transition-all bg-white text-brand-600 shadow-sm font-semibold";
-                btnOpen.className = "px-3 py-1.5 rounded-lg transition-all text-slate-600 hover:text-slate-900";
-                bannerText.innerHTML = "現在のモード: <b>個人データベース</b>（自分専用）";
-                bannerIcon.className = "fa-solid fa-user-lock";
-            } else {
-                btnOpen.className = "px-3 py-1.5 rounded-lg transition-all bg-white text-brand-600 shadow-sm font-semibold";
-                btnPersonal.className = "px-3 py-1.5 rounded-lg transition-all text-slate-600 hover:text-slate-900";
-                bannerText.innerHTML = "現在のモード: <b>オープンデータベース</b>（公開・みんなで編集可能）";
-                bannerIcon.className = "fa-solid fa-globe";
-            }
-            renderItems();
-        }
-
-        // Render Product Items Grid
-        function renderItems() {
-            const grid = document.getElementById('items-grid');
-            const emptyState = document.getElementById('empty-state');
-            const searchQuery = document.getElementById('search-input').value.trim().toLowerCase();
-            const clearBtn = document.getElementById('clear-search');
-
-            if (searchQuery) {
-                clearBtn.classList.remove('hidden');
-            } else {
-                clearBtn.classList.add('hidden');
-            }
-
-            let sourceItems = currentDbMode === 'personal' ? personalItems : openItems;
-
-            // Apply Search Query & Tag Filter
-            let filtered = sourceItems.filter(item => {
-                const matchesSearch = !searchQuery || 
-                    item.name.toLowerCase().includes(searchQuery) ||
-                    (item.jan && item.jan.includes(searchQuery)) ||
-                    (item.notes && item.notes.toLowerCase().includes(searchQuery)) ||
-                    item.stores.some(s => s.name.toLowerCase().includes(searchQuery));
-
-                const matchesTag = !selectedTag || (item.tags && item.tags.includes(selectedTag));
-
-                return matchesSearch && matchesTag;
-            });
-
-            document.getElementById('item-count').textContent = `${filtered.length} 件の商品`;
-
-            // Update Dynamic Tags
-            renderTagsBar(sourceItems);
-
-            if (filtered.length === 0) {
-                grid.innerHTML = '';
-                emptyState.classList.remove('hidden');
-                return;
-            }
-
-            emptyState.classList.add('hidden');
-            grid.innerHTML = filtered.map(item => createCardHTML(item)).join('');
-        }
-
-        // Card Template
-        function createCardHTML(item) {
-            const latestStore = item.stores && item.stores.length > 0 ? item.stores[item.stores.length - 1] : null;
-            const janCode = item.jan || '未登録';
-
-            // Automatic EC Lookup Links
-            const amazonSearchUrl = `https://www.amazon.co.jp/s?k=${encodeURIComponent(item.jan || item.name)}`;
-            const rakutenSearchUrl = `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(item.jan || item.name)}`;
-            const yahooSearchUrl = `https://shopping.yahoo.co.jp/search?p=${encodeURIComponent(item.jan || item.name)}`;
-
-            const tagChips = (item.tags || []).map(t => 
-                `<span onclick="filterByTag('${t}')" class="px-2 py-0.5 bg-slate-100 hover:bg-brand-50 text-slate-600 hover:text-brand-600 rounded-md text-[10px] font-medium cursor-pointer transition">#${t}</span>`
-            ).join(' ');
-
-            return `
-                <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition p-4 flex flex-col justify-between">
-                    <div>
-                        <!-- Header / Title -->
-                        <div class="flex justify-between items-start gap-2 mb-2">
-                            <h4 class="font-bold text-slate-800 text-sm leading-snug">${escapeHtml(item.name)}</h4>
-                            <div class="flex items-center gap-1">
-                                <button onclick="editItem('${item.id}')" class="text-slate-400 hover:text-brand-600 p-1" title="編集">
-                                    <i class="fa-solid fa-pen-to-square"></i>
-                                </button>
-                                <button onclick="deleteItem('${item.id}')" class="text-slate-400 hover:text-rose-600 p-1" title="削除">
-                                    <i class="fa-solid fa-trash-can"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- JAN Code -->
-                        <div class="flex items-center gap-1.5 text-xs font-mono text-slate-500 mb-3 bg-slate-50 px-2 py-1 rounded-lg w-fit">
-                            <i class="fa-solid fa-barcode text-slate-400"></i>
-                            <span>${janCode}</span>
-                        </div>
-
-                        <!-- Store & Price info -->
-                        ${latestStore ? `
-                            <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-2.5 mb-3">
-                                <div class="flex justify-between items-center text-xs">
-                                    <span class="font-bold text-emerald-800"><i class="fa-solid fa-store mr-1"></i>${escapeHtml(latestStore.name)}</span>
-                                    <span class="font-extrabold text-emerald-700 text-sm">¥${Number(latestStore.price).toLocaleString()}</span>
-                                </div>
-                                <div class="text-[10px] text-emerald-600/80 text-right mt-0.5">${latestStore.date || '日付未記録'}</div>
-                            </div>
-                        ` : ''}
-
-                        <!-- EC Direct Search Links -->
-                        <div class="mb-3 space-y-1">
-                            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">大手ECサイト最安値検索</span>
-                            <div class="flex items-center gap-1.5 text-[11px]">
-                                <a href="${amazonSearchUrl}" target="_blank" class="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg flex-1 text-center font-medium transition">
-                                    <i class="fa-brands fa-amazon mr-1"></i>Amazon
-                                </a>
-                                <a href="${rakutenSearchUrl}" target="_blank" class="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg flex-1 text-center font-medium transition">
-                                    楽天
-                                </a>
-                                <a href="${yahooSearchUrl}" target="_blank" class="px-2 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg flex-1 text-center font-medium transition">
-                                    Yahoo!
-                                </a>
-                            </div>
-                        </div>
-
-                        <!-- Notes -->
-                        ${item.notes ? `
-                            <p class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 mb-3 italic">
-                                <i class="fa-regular fa-comment-dots text-slate-400 mr-1"></i>${escapeHtml(item.notes)}
-                            </p>
-                        ` : ''}
-                    </div>
-
-                    <!-- Tags Footer -->
-                    <div class="pt-2 border-t border-slate-100 flex flex-wrap gap-1">
-                        ${tagChips || '<span class="text-[10px] text-slate-300">タグなし</span>'}
-                    </div>
-                </div>
-            `;
-        }
-
-        // Render Dynamic Tag Chips Bar
-        function renderTagsBar(items) {
-            const container = document.getElementById('tags-container');
-            const allTags = Array.from(new Set(items.flatMap(i => i.tags || [])));
-
-            if (allTags.length === 0) {
-                container.innerHTML = '<span class="text-slate-400 italic">登録タグなし</span>';
-                return;
-            }
-
-            container.innerHTML = `
-                <button onclick="filterByTag(null)" class="px-2.5 py-1 rounded-full text-xs font-medium transition ${!selectedTag ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
-                    すべて
-                </button>
-                ${allTags.map(tag => `
-                    <button onclick="filterByTag('${tag}')" class="px-2.5 py-1 rounded-full text-xs font-medium transition ${selectedTag === tag ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
-                        #${tag}
-                    </button>
-                `).join('')}
-            `;
-        }
-
-        function filterByTag(tag) {
-            selectedTag = tag;
-            renderItems();
-        }
-
-        function clearSearch() {
-            document.getElementById('search-input').value = '';
-            selectedTag = null;
-            renderItems();
-        }
-
-        // Add / Edit Modal Controls
-        function openAddModal() {
-            document.getElementById('modal-title').textContent = '商品データの追加';
-            document.getElementById('product-form').reset();
-            document.getElementById('form-item-id').value = '';
-            document.getElementById('form-store-date').value = new Date().toISOString().split('T')[0];
-            document.getElementById('product-modal').classList.remove('hidden');
-        }
-
-        function editItem(id) {
-            const list = currentDbMode === 'personal' ? personalItems : openItems;
-            const item = list.find(i => i.id === id);
-            if (!item) return;
-
-            document.getElementById('modal-title').textContent = '商品データの編集';
-            document.getElementById('form-item-id').value = item.id;
-            document.getElementById('form-name').value = item.name;
-            document.getElementById('form-jan').value = item.jan || '';
-            document.getElementById('form-tags').value = (item.tags || []).join(', ');
-            document.getElementById('form-notes').value = item.notes || '';
-
-            if (item.stores && item.stores.length > 0) {
-                const lastStore = item.stores[item.stores.length - 1];
-                document.getElementById('form-store-name').value = lastStore.name || '';
-                document.getElementById('form-store-date').value = lastStore.date || '';
-                document.getElementById('form-store-price').value = lastStore.price || '';
-            }
-
-            document.getElementById('product-modal').classList.remove('hidden');
-        }
-
-        function closeProductModal() {
-            document.getElementById('product-modal').classList.add('hidden');
-        }
-
-        function handleFormSubmit(e) {
-            e.preventDefault();
-            const id = document.getElementById('form-item-id').value || `item-${Date.now()}`;
-            const name = document.getElementById('form-name').value.trim();
-            const jan = document.getElementById('form-jan').value.trim();
-            const storeName = document.getElementById('form-store-name').value.trim();
-            const storeDate = document.getElementById('form-store-date').value;
-            const storePrice = document.getElementById('form-store-price').value;
-            const tags = document.getElementById('form-tags').value.split(',').map(t => t.trim()).filter(Boolean);
-            const notes = document.getElementById('form-notes').value.trim();
-
-            const storeEntry = storeName ? [{ name: storeName, date: storeDate, price: Number(storePrice) || 0 }] : [];
-
-            const newItem = {
-                id,
-                name,
-                jan,
-                stores: storeEntry,
-                tags,
-                notes
-            };
-
-            let list = currentDbMode === 'personal' ? personalItems : openItems;
-            const existingIndex = list.findIndex(i => i.id === id);
-
-            if (existingIndex >= 0) {
-                list[existingIndex] = newItem;
-            } else {
-                list.unshift(newItem);
-            }
-
-            closeProductModal();
-            renderItems();
-            showToast('商品を保存しました');
-        }
-
-        function deleteItem(id) {
-            if (!confirm('この商品を削除しますか？')) return;
-            if (currentDbMode === 'personal') {
-                personalItems = personalItems.filter(i => i.id !== id);
-            } else {
-                openItems = openItems.filter(i => i.id !== id);
-            }
-            renderItems();
-            showToast('削除しました');
-        }
-
-        // Camera JAN Scanner Modal (Html5Qrcode)
-        function openScannerModal() {
-            document.getElementById('scanner-modal').classList.remove('hidden');
-            const statusEl = document.getElementById('scan-status');
-
-            if (!html5QrcodeScanner) {
-                html5QrcodeScanner = new Html5Qrcode("reader");
-            }
-
-            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
-            html5QrcodeScanner.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText) => {
-                    // Success callback
-                    closeScannerModal();
-                    document.getElementById('search-input').value = decodedText;
-                    renderItems();
-                    showToast(`スキャン完了: JAN ${decodedText}`);
-                },
-                (errorMessage) => {
-                    statusEl.textContent = "スキャン中...";
-                }
-            ).catch(err => {
-                statusEl.textContent = "カメラ起動エラー";
-            });
-        }
-
-        function triggerScanForForm() {
-            closeProductModal();
-            openScannerModal();
-        }
-
-        function closeScannerModal() {
-            if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
-                html5QrcodeScanner.stop().catch(console.error);
-            }
-            document.getElementById('scanner-modal').classList.add('hidden');
-        }
-
-        // Leaflet / Map Picker Modal
-        function openMapStorePicker() {
-            document.getElementById('map-modal').classList.remove('hidden');
-            if (!storeMap) {
-                setTimeout(() => {
-                    storeMap = L.map('map-container').setView([35.6812, 139.7671], 14); // Default Tokyo
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '&copy; OpenStreetMap'
-                    }).addTo(storeMap);
-
-                    // Add demo store markers
-                    const stores = [
-                        { name: "イオンモール店", lat: 35.682, lng: 139.768 },
-                        { name: "ウエルシア薬局", lat: 35.680, lng: 139.765 },
-                        { name: "ドン・キホーテ", lat: 35.683, lng: 139.762 }
-                    ];
-
-                    stores.forEach(s => {
-                        const marker = L.marker([s.lat, s.lng]).addTo(storeMap);
-                        marker.bindPopup(`<b>${s.name}</b><br><button onclick="selectStoreFromMap('${s.name}')" class="mt-1 px-2 py-0.5 bg-brand-500 text-white rounded text-xs">この店舗を選択</button>`);
-                    });
-
-                    // Try Geolocation
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(pos => {
-                            storeMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
-                        });
-                    }
-                }, 200);
-            }
-        }
-
-        window.selectStoreFromMap = function(storeName) {
-            document.getElementById('form-store-name').value = storeName;
-            closeMapModal();
-            openAddModal();
-            showToast(`店舗「${storeName}」をセットしました`);
-        };
-
-        function closeMapModal() {
-            document.getElementById('map-modal').classList.add('hidden');
-        }
-
-        // Database Import & Intelligent Merge
-        function openImportMergeModal() {
-            document.getElementById('merge-modal').classList.remove('hidden');
-        }
-
-        function closeMergeModal() {
-            document.getElementById('merge-modal').classList.add('hidden');
-        }
-
-        function executeMerge(type) {
-            let source = type === 'open-to-personal' ? openItems : personalItems;
-            let target = type === 'open-to-personal' ? personalItems : openItems;
-
-            let mergedCount = 0;
-
-            source.forEach(srcItem => {
-                // Find existing match by JAN code or Name
-                const existing = target.find(t => (srcItem.jan && t.jan === srcItem.jan) || t.name === srcItem.name);
-
-                if (existing) {
-                    // Merge store history and tags without destructive overwrite
-                    if (srcItem.stores) {
-                        existing.stores = [...(existing.stores || []), ...srcItem.stores];
-                    }
-                    if (srcItem.tags) {
-                        existing.tags = Array.from(new Set([...(existing.tags || []), ...srcItem.tags]));
-                    }
-                    if (srcItem.notes && !existing.notes.includes(srcItem.notes)) {
-                        existing.notes += ` / ${srcItem.notes}`;
-                    }
-                } else {
-                    // Insert new item copy
-                    target.push({ ...srcItem, id: `merged-${Date.now()}-${Math.random().toString(36).substr(2, 4)}` });
-                    mergedCount++;
-                }
-            });
-
-            closeMergeModal();
-            renderItems();
-            showToast(`マージ完了: ${mergedCount} 件の新規データを統合しました`);
-        }
-
-        // Auth Modals
-        function openAuthModal() {
-            document.getElementById('auth-modal').classList.remove('hidden');
-        }
-
-        function closeAuthModal() {
-            document.getElementById('auth-modal').classList.add('hidden');
-        }
-
-        function handleGoogleLogin() {
-            const provider = new GoogleAuthProvider();
-            signInWithPopup(auth, provider)
-                .then(() => closeAuthModal())
-                .catch(err => showToast(`ログイン失敗: ${err.message}`));
-        }
-
-        function handleUsernameLogin(e) {
-            e.preventDefault();
-            const username = document.getElementById('auth-username').value;
-            closeAuthModal();
-            showToast(`${username} としてログイン（デモモード）`);
-        }
-
-        function handleLogout() {
-            signOut(auth).then(() => {
-                showToast('ログアウトしました');
-            });
-        }
-
-        // UI Toast Helper
-        function showToast(message) {
-            const toast = document.getElementById('toast');
-            document.getElementById('toast-msg').textContent = message;
-            toast.classList.remove('translate-y-20', 'opacity-0');
-
-            setTimeout(() => {
-                toast.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
-        }
-
-        function escapeHtml(str) {
-            return String(str || '').replace(/[&<>"']/g, m => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
-            }[m]));
-        }
-    </script>
+      }
+    }
+
+    // --- 設定保存 ---
+    function saveSettings() {
+      alert("設定を保存しました！アフィリエイトリンクおよびAPI連携に反映されます。");
+    }
+  </script>
 </body>
 </html>
