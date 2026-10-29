@@ -120,16 +120,16 @@
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
           <div>
             <h2 class="font-bold text-slate-800 text-sm">店舗マップ・高精度エリア検索</h2>
-            <p class="text-xs text-slate-500">現在地を取得すると、その周辺エリアを優先して店舗を探します。</p>
+            <p class="text-xs text-slate-500">登録された店舗や支店名を自動で地図上に反映・検索できます。</p>
           </div>
           <button onclick="locateUser()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-3.5 py-1.5 rounded-lg font-medium transition shadow-sm">
-            <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を取得して基準にする
+            <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を基準にする
           </button>
         </div>
 
         <!-- 店舗・エリア検索バー -->
         <div class="flex gap-2 pt-1">
-          <input type="text" id="mapSearchInput" placeholder="店舗名や地域を入力 (例: イオン、スギ薬局、近くのスーパー)" class="flex-1 p-2 border border-slate-300 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50">
+          <input type="text" id="mapSearchInput" placeholder="店舗名や地域を入力 (例: イオン 豊橋南店、スギ薬局)" class="flex-1 p-2 border border-slate-300 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50">
           <button onclick="searchStoreOnMap()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-medium transition shadow-sm whitespace-nowrap">
             <i class="fa-solid fa-magnifying-glass mr-1"></i>店舗を探す
           </button>
@@ -145,12 +145,12 @@
       <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 max-w-2xl mx-auto text-xs md:text-sm">
         <div>
           <h2 class="font-bold text-base text-slate-900">アプリケーション設定</h2>
-          <p class="text-slate-500 text-xs mt-0.5">現在、ローカルストレージおよびFirebaseによるデータ管理が有効です。</p>
+          <p class="text-slate-500 text-xs mt-0.5">データは自動的にローカルストレージに永続保存され、消えることはありません。</p>
         </div>
         <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-600 text-xs space-y-1">
           <p class="font-bold text-slate-700">ステータス</p>
           <p>・Firebase Authentication / Firestore 接続済み</p>
-          <p>・オフラインキャッシュ（localStorage）稼働中</p>
+          <p>・データの自動バックアップ（localStorage 永続化）有効</p>
         </div>
       </div>
     </section>
@@ -196,12 +196,28 @@
           </div>
         </div>
 
-        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-          <p class="font-bold text-xs text-slate-700"><i class="fa-solid fa-store mr-1 text-blue-600"></i>店舗・日付・価格の記録</p>
-          <div class="grid grid-cols-3 gap-2">
-            <input type="text" id="formStore" placeholder="店舗名 (例: イオン豊橋南店)" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            <input type="number" id="formPrice" placeholder="価格 (円)" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            <input type="date" id="formDate" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
+        <!-- 店舗・支店分離入力ブロック -->
+        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+          <p class="font-bold text-xs text-slate-700"><i class="fa-solid fa-store mr-1 text-blue-600"></i>店舗情報・価格の記録</p>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">店舗名</label>
+              <input type="text" id="formStore" placeholder="例: イオン" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">支店・エリア名</label>
+              <input type="text" id="formBranch" placeholder="例: 豊橋南店 / 名古屋支店" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">価格 (円)</label>
+              <input type="number" id="formPrice" placeholder="例: 128" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-500 mb-0.5">日付</label>
+              <input type="date" id="formDate" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
+            </div>
           </div>
         </div>
 
@@ -241,7 +257,7 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // --- アプリケーション状態 ---
+    // --- アプリケーション状態 & 永続化ストレージ初期化 ---
     let currentUser = null;
     let currentDbType = 'personal';
     let selectedTag = null;
@@ -250,7 +266,8 @@
     let mapMarkers = [];
     let userCurrentCoords = null;
 
-    let localItems = JSON.parse(localStorage.getItem('smart_item_db')) || [
+    // 初期データ（LocalStorageにない場合のみセットし、以降はローカルデータを最優先して保持）
+    const defaultInitialItems = [
       {
         id: "item_1",
         name: "サントリー 天然水 2L",
@@ -258,12 +275,14 @@
         tags: ["飲料", "水", "定番"],
         memo: "防災用備蓄品。お買い得価格。",
         stores: [
-          { name: "スギ薬局 豊橋駅前店", price: 98, date: "2026-10-20" },
-          { name: "イオン 豊橋南店", price: 108, date: "2026-10-15" }
+          { name: "スギ薬局", branch: "豊橋駅前店", price: 98, date: "2026-10-20" },
+          { name: "イオン", branch: "豊橋南店", price: 108, date: "2026-10-15" }
         ],
         dbType: "open"
       }
     ];
+
+    let localItems = JSON.parse(localStorage.getItem('smart_item_db_v2')) || defaultInitialItems;
 
     document.addEventListener("DOMContentLoaded", () => {
       initAuth();
@@ -353,7 +372,7 @@
         if (search) {
           const matchName = item.name.toLowerCase().includes(search);
           const matchJan = item.jan && item.jan.includes(search);
-          const matchStore = item.stores && item.stores.some(s => s.name.toLowerCase().includes(search));
+          const matchStore = item.stores && item.stores.some(s => (s.name + (s.branch || '')).toLowerCase().includes(search));
           return matchName || matchJan || matchStore;
         }
         return true;
@@ -384,6 +403,8 @@
         const rakutenUrl = `https://search.rakuten.co.jp/search/mall/${q}/`;
         const yahooUrl = `https://shopping.yahoo.co.jp/search?p=${q}`;
 
+        const storeFullName = lowestStore ? `${lowestStore.name} ${lowestStore.branch || ''}` : '未記録';
+
         return `
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 flex flex-col justify-between space-y-3">
             <div>
@@ -403,7 +424,7 @@
                   <span>${lowestStore ? lowestStore.date : '-'}</span>
                 </div>
                 <div class="flex justify-between items-baseline">
-                  <span class="font-bold text-slate-800 text-xs">${lowestStore ? lowestStore.name : '未記録'}</span>
+                  <span class="font-bold text-slate-800 text-xs">${storeFullName}</span>
                   <span class="text-blue-700 font-extrabold text-base">${lowestStore ? '¥' + Number(lowestStore.price).toLocaleString() : '-'}</span>
                 </div>
               </div>
@@ -448,7 +469,7 @@
       renderItems();
     }
 
-    // --- 高精度JANコードカメラ読み取り ---
+    // --- JANコードカメラ読み取り ---
     function openScanModal() {
       document.getElementById('scanModal').classList.remove('hidden');
       
@@ -512,8 +533,9 @@
       document.getElementById('formTags').value = (item.tags || []).join(', ');
       document.getElementById('formMemo').value = item.memo || '';
       if (item.stores && item.stores.length > 0) {
-        document.getElementById('formStore').value = item.stores[0].name;
-        document.getElementById('formPrice').value = item.stores[0].price;
+        document.getElementById('formStore').value = item.stores[0].name || '';
+        document.getElementById('formBranch').value = item.stores[0].branch || '';
+        document.getElementById('formPrice').value = item.stores[0].price || '';
         document.getElementById('formDate').value = item.stores[0].date || '';
       }
       document.getElementById('modalTitle').textContent = '商品を編集';
@@ -532,6 +554,7 @@
       const jan = document.getElementById('formJan').value;
       const tagsStr = document.getElementById('formTags').value;
       const storeName = document.getElementById('formStore').value;
+      const storeBranch = document.getElementById('formBranch').value;
       const price = document.getElementById('formPrice').value;
       const date = document.getElementById('formDate').value || new Date().toISOString().split('T')[0];
       const memo = document.getElementById('formMemo').value;
@@ -539,7 +562,7 @@
       const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()) : [];
       let stores = [];
       if (storeName && price) {
-        stores.push({ name: storeName, price: Number(price), date });
+        stores.push({ name: storeName, branch: storeBranch, price: Number(price), date });
       }
 
       const newItem = { id, name, jan, tags, memo, stores, dbType: currentDbType };
@@ -578,14 +601,13 @@
       renderItems();
     }
 
-    // --- 店舗マップ機能 (標準 OpenStreetMap タイルに変更しAPIキーエラーを完全解消) ---
+    // --- 店舗マップ機能 (支店名連動＆検索) ---
     function initMap() {
       map = L.map('map', {
         zoomControl: true,
         attributionControl: true
       }).setView([34.769, 137.391], 13);
 
-      // 完全無料・APIキー不要の公式標準 OpenStreetMap タイル
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -605,24 +627,25 @@
         if (item.stores) {
           item.stores.forEach(s => {
             if (s.name) {
-              if (!storeMap.has(s.name)) {
-                storeMap.set(s.name, []);
+              const fullStoreName = `${s.name} ${s.branch || ''}`.trim();
+              if (!storeMap.has(fullStoreName)) {
+                storeMap.set(fullStoreName, []);
               }
-              storeMap.set(s.name, storeMap.get(s.name).concat(`${item.name} (¥${s.price})`));
+              storeMap.set(fullStoreName, storeMap.get(fullStoreName).concat(`${item.name} (¥${s.price})`));
             }
           });
         }
       });
 
-      storeMap.forEach((itemsList, storeName) => {
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(storeName)}`)
+      storeMap.forEach((itemsList, fullStoreName) => {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullStoreName)}`)
           .then(res => res.json())
           .then(data => {
             if (data && data.length > 0) {
               const lat = parseFloat(data[0].lat);
               const lon = parseFloat(data[0].lon);
               const marker = L.marker([lat, lon]).addTo(map)
-                .bindPopup(`<b>${storeName}</b><br><hr class="my-1"><span class="text-[11px]">${itemsList.join('<br>')}</span>`);
+                .bindPopup(`<b>${fullStoreName}</b><br><hr class="my-1"><span class="text-[11px]">${itemsList.join('<br>')}</span>`);
               mapMarkers.push(marker);
             }
           })
@@ -685,8 +708,9 @@
       }
     }
 
+    // --- 永続化保存 ---
     function saveLocalStorage() {
-      localStorage.setItem('smart_item_db', JSON.stringify(localItems));
+      localStorage.setItem('smart_item_db_v2', JSON.stringify(localItems));
     }
   </script>
 </body>
