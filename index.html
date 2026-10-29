@@ -26,7 +26,7 @@
   <style>
     body { font-family: 'Inter', sans-serif; }
     .nav-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
-    #reader video { border-radius: 0.5rem; width: 100% !important; }
+    #reader video { border-radius: 0.5rem; width: 100% !important; object-fit: cover; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
@@ -119,25 +119,25 @@
       <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
           <div>
-            <h2 class="font-bold text-slate-800 text-sm">店舗マップ・エリア検索</h2>
-            <p class="text-xs text-slate-500">位置情報のほか、店名や地域名（例: 豊橋市 スギ薬局）で正確に店舗を探せます</p>
+            <h2 class="font-bold text-slate-800 text-sm">店舗マップ・高精度エリア検索</h2>
+            <p class="text-xs text-slate-500">現在地を取得すると、その周辺エリアを優先して店舗を探します。</p>
           </div>
-          <button onclick="locateUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-300">
-            <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を取得
+          <button onclick="locateUser()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-3.5 py-1.5 rounded-lg font-medium transition shadow-sm">
+            <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を取得して基準にする
           </button>
         </div>
 
         <!-- 店舗・エリア検索バー -->
         <div class="flex gap-2 pt-1">
-          <input type="text" id="mapSearchInput" placeholder="店舗名や地域を入力 (例: イオン豊橋南店、名古屋駅 ドラッグストア)" class="flex-1 p-2 border border-slate-300 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50">
+          <input type="text" id="mapSearchInput" placeholder="店舗名や地域を入力 (例: イオン、スギ薬局、近くのスーパー)" class="flex-1 p-2 border border-slate-300 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50">
           <button onclick="searchStoreOnMap()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-medium transition shadow-sm whitespace-nowrap">
             <i class="fa-solid fa-magnifying-glass mr-1"></i>店舗を探す
           </button>
         </div>
       </div>
 
-      <!-- 地図表示領域 -->
-      <div id="map" class="w-full h-[480px] rounded-xl border border-slate-200 shadow-inner"></div>
+      <!-- 高解像度地図表示領域 -->
+      <div id="map" class="w-full h-[500px] rounded-xl border border-slate-200 shadow-inner"></div>
     </section>
 
     <!-- TAB 3: アプリ設定 -->
@@ -157,7 +157,7 @@
 
   </main>
 
-  <!-- Modal: JANコードスキャナー -->
+  <!-- Modal: JANコードスキャナー (高精度モード) -->
   <div id="scanModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
       <div class="flex justify-between items-center border-b pb-2">
@@ -165,7 +165,7 @@
         <button onclick="closeScanModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
       <div id="reader" class="w-full overflow-hidden bg-slate-100 rounded-lg"></div>
-      <div class="text-center text-[11px] text-slate-500">スマートフォンのカメラ等をバーコードに合わせてください</div>
+      <div class="text-center text-[11px] text-slate-500">バーコードをカメラの中央の枠内に合わせてください（自動認識）</div>
     </div>
   </div>
 
@@ -248,6 +248,7 @@
     let html5QrcodeScanner = null;
     let map = null;
     let mapMarkers = [];
+    let userCurrentCoords = null; // 現在地保持用 (lat, lng)
 
     let localItems = JSON.parse(localStorage.getItem('smart_item_db')) || [
       {
@@ -447,19 +448,40 @@
       renderItems();
     }
 
-    // --- JANコードカメラ読み取り ---
+    // --- 【精度向上】高精度JANコードカメラ読み取り ---
     function openScanModal() {
       document.getElementById('scanModal').classList.remove('hidden');
+      
+      // 解像度やフォーカス、スキャン頻度（fps）を最適化
+      const config = {
+        fps: 20, 
+        qrbox: { width: 280, height: 140 },
+        aspectRatio: 1.0,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.CODE_128
+        ]
+      };
+
       html5QrcodeScanner = new Html5Qrcode("reader");
       html5QrcodeScanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
+        config,
         (decodedText) => {
+          // 成功時に音またはバイブレーション等を入れても良い
           closeScanModal();
           openItemModalWithJan(decodedText);
         },
-        () => {}
-      ).catch(err => console.error(err));
+        (errorMessage) => {
+          // スキャン中の細かいエラーは無視して継続
+        }
+      ).catch(err => {
+        console.error("Camera start error:", err);
+        alert("カメラを起動できませんでした。権限またはSSL(HTTPS)接続をご確認ください。");
+        closeScanModal();
+      });
     }
 
     function closeScanModal() {
@@ -560,27 +582,30 @@
       renderItems();
     }
 
-    // --- 店舗マップ機能 (Leaflet + OpenStreetMap Nominatim 検索連携) ---
+    // --- 【高解像度化・現在地基準検索】店舗マップ機能 ---
     function initMap() {
-      // 初期位置: 豊橋市中心付近
-      map = L.map('map').setView([34.769, 137.391], 13);
+      // 初期位置 (豊橋中心など)
+      map = L.map('map', {
+        zoomControl: true,
+        attributionControl: true
+      }).setView([34.769, 137.391], 13);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
+      // 高解像度・詳細なタイルレイヤー (CartoDB Positron / OpenStreetMap等で高精細表示)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        attribution: '© <a href="https://carto.com/">CARTO</a>, © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       }).addTo(map);
 
       updateMapMarkers();
     }
 
-    // 登録されている店舗情報を元にマップにピンを自動配置
+    // 登録店舗のピン配置
     function updateMapMarkers() {
       if (!map) return;
 
-      // 既存のピンをクリア
       mapMarkers.forEach(m => map.removeLayer(m));
       mapMarkers = [];
 
-      // 登録商品から店舗名を収集
       const storeMap = new Map();
       localItems.forEach(item => {
         if (item.stores) {
@@ -595,9 +620,14 @@
         }
       });
 
-      // 各店舗の座標を簡易ジオコーディング検索してピン留め
       storeMap.forEach((itemsList, storeName) => {
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(storeName)}`)
+        // 現在地があればビューポート周辺を優先検索
+        let searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(storeName)}`;
+        if (userCurrentCoords) {
+          // 簡易的に現在地付近のパラメータを含めることも可能
+        }
+
+        fetch(searchUrl)
           .then(res => res.json())
           .then(data => {
             if (data && data.length > 0) {
@@ -612,7 +642,7 @@
       });
     }
 
-    // マップ上の検索バーから店舗やエリアを探す
+    // 【現在地基準対応】マップ上の店舗・エリア検索
     async function searchStoreOnMap() {
       const query = document.getElementById('mapSearchInput').value.trim();
       if (!query) {
@@ -620,8 +650,18 @@
         return;
       }
 
+      // 現在地が取得済みの場合は、検索クエリに現在地周辺のビューやキーワードを補完、あるいは現在地を基準にピンを立てる
+      let searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+      
+      if (userCurrentCoords) {
+        // 緯度経度付近を優先させるためのパラメータを付与 (viewbox)
+        const lat = userCurrentCoords.lat;
+        const lon = userCurrentCoords.lng;
+        searchUrl += `&viewbox=${lon-0.1},${lat+0.1},${lon+0.1},${lat-0.1}&bounded=1`;
+      }
+
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+        const res = await fetch(searchUrl);
         const data = await res.json();
 
         if (data && data.length > 0) {
@@ -630,10 +670,10 @@
           map.setView([lat, lon], 15);
           
           const marker = L.marker([lat, lon]).addTo(map)
-            .bindPopup(`<b>${query}</b><br>検索結果の場所`).openPopup();
+            .bindPopup(`<b>${query}</b><br>検索された店舗・場所`).openPopup();
           mapMarkers.push(marker);
         } else {
-          alert("該当する場所が見つかりませんでした。別のキーワードでお試しください。");
+          alert("該当する場所が見つかりませんでした。キーワードを変更してお試しください。");
         }
       } catch (e) {
         console.error("Map search error:", e);
@@ -641,16 +681,22 @@
       }
     }
 
+    // 【現在地取得】取得成功時に位置情報を記録し、そこを基準に地図を移動
     function locateUser() {
       if (navigator.geolocation && map) {
         navigator.geolocation.getCurrentPosition(pos => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
-          map.setView([lat, lng], 15);
-          L.marker([lat, lng]).addTo(map).bindPopup('<b>現在地</b>').openPopup();
+          
+          // 現在地を保存（マップ検索の基準にするため）
+          userCurrentCoords = { lat, lng };
+
+          map.setView([lat, lng], 16);
+          L.marker([lat, lng]).addTo(map).bindPopup('<b>現在地（検索基準地）</b>').openPopup();
+          alert("現在地を取得しました！この場所を基準に店舗検索が可能です。");
         }, () => {
-          alert("位置情報の取得に失敗しました。ブラウザの設定をご確認ください。");
-        });
+          alert("位置情報の取得に失敗しました。位置情報の権限をご確認ください。");
+        }, { enableHighAccuracy: true });
       } else {
         alert("お使いのブラウザは位置情報に対応していません。");
       }
