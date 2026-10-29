@@ -119,17 +119,19 @@
     </section>
 
     <!-- TAB 2: 店舗マップ -->
-    <section id="view-map" class="hidden space-y-4">
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-        <div>
-          <h2 class="font-bold text-slate-800 text-sm">周辺の取扱店舗マップ</h2>
-          <p class="text-xs text-slate-500">GPS・地図から購入店舗の位置を確認</p>
+    <section id="view-map" class="hidden space-y-3">
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <div><h2 class="font-bold text-slate-800 text-sm">店舗マップ</h2><p class="text-[11px] text-slate-500">登録済みの購入店舗と位置情報を確認</p></div>
+          <button onclick="locateUser()" class="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded-lg"><i class="fa-solid fa-location-crosshairs mr-1"></i>現在地</button>
         </div>
-        <button onclick="locateUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-300">
-          <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を取得
-        </button>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="rounded-lg bg-slate-50 p-2"><p class="text-[10px] text-slate-500">登録店舗記録</p><p id="mapStoreCount" class="text-lg font-bold text-slate-800">0</p></div>
+          <div class="rounded-lg bg-slate-50 p-2"><p class="text-[10px] text-slate-500">地図表示できる位置</p><p id="mapPinCount" class="text-lg font-bold text-blue-700">0</p></div>
+        </div>
       </div>
-      <div id="map" class="w-full h-[500px] rounded-xl border border-slate-200 shadow-inner"></div>
+      <div class="relative"><div id="map" class="w-full h-[55vh] min-h-[320px] max-h-[620px] rounded-xl border border-slate-200 shadow-sm overflow-hidden"></div><button onclick="fitStoreMap()" class="absolute right-3 top-3 z-[500] bg-white/95 border border-slate-300 shadow rounded-lg px-3 py-2 text-xs font-semibold"><i class="fa-solid fa-expand mr-1"></i>店舗全体を表示</button></div>
+      <div class="bg-white rounded-xl border border-slate-200 p-3 space-y-2"><div class="flex items-center justify-between"><h3 class="font-bold text-sm">登録店舗一覧</h3><span class="text-[10px] text-slate-400">位置情報がある店舗は地図に表示</span></div><div id="mapStoreList" class="space-y-1"><p class="text-xs text-slate-500">店舗データを読み込み中…</p></div></div>
     </section>
 
 
@@ -150,50 +152,52 @@
 
   <!-- Modal: 商品登録 / 編集 -->
   <div id="itemModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-5 space-y-3 shadow-xl my-6 text-xs md:text-sm">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-3 sm:p-4 space-y-2 shadow-xl my-3 text-xs md:text-sm max-h-[92vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 id="modalTitle" class="font-bold text-slate-900 text-base">商品を新規登録</h3>
         <button onclick="closeItemModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
 
-      <form id="itemForm" onsubmit="handleSaveItem(event)" class="space-y-3">
+      <form id="itemForm" onsubmit="handleSaveItem(event)" class="space-y-2">
         <input type="hidden" id="editItemId">
 
-        <div class="grid grid-cols-2 gap-2">
-          <div><label class="block font-medium text-slate-700 mb-1">メーカー名</label><input type="text" id="formMaker" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：サントリー"></div>
-          <div><label class="block font-medium text-slate-700 mb-1">商品名 <span class="text-red-500">*</span></label><input type="text" id="formName" required class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：天然水"></div>
-          <div><label class="block font-medium text-slate-700 mb-1">フレーバー・種類など</label><input type="text" id="formFlavor" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：レモン、無糖"></div>
-          <div><label class="block font-medium text-slate-700 mb-1">内容量</label><input type="text" id="formContent" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：500ml、6本"></div>
+        <div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
+          <div><label class="block text-[11px] font-medium text-slate-600 mb-0.5">メーカー名</label><input type="text" id="formMaker" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：サントリー"></div>
+          <div><label class="block text-[11px] font-medium text-slate-600 mb-0.5">商品名 <span class="text-red-500">*</span></label><input type="text" id="formName" required class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：天然水"></div>
+          <div><label class="block text-[11px] font-medium text-slate-600 mb-0.5">フレーバー・種類など</label><input type="text" id="formFlavor" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：レモン、無糖"></div>
+          <div><label class="block text-[11px] font-medium text-slate-600 mb-0.5">内容量</label><input type="text" id="formContent" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：500ml、6本"></div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block font-medium text-slate-700 mb-1">JANコード</label>
+            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">JANコード</label>
             <div class="flex gap-1"><input type="text" id="formJan" class="min-w-0 flex-1 p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="4900000000000"><button type="button" onclick="openJanFieldScanModal()" title="カメラでJANを読み取る" aria-label="カメラでJANを読み取る" class="shrink-0 px-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700"><i class="fa-solid fa-camera"></i></button></div>
           <div class="col-span-2">
-            <label class="block font-medium text-slate-700 mb-1">商品区分（消費税・商品ごとに設定）</label>
+            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">商品区分（消費税・商品ごとに設定）</label>
             <select id="formTaxType" class="w-full p-2 border border-slate-300 rounded-lg bg-white"><option value="food">食品（8%）</option><option value="other">食品以外（10%）</option></select>
           </div>
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">タグ（「,」または「、」で区切り）</label>
+            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">タグ（「,」または「、」で区切り）</label>
             <input type="text" id="formTags" autocomplete="off" oninput="renderTagSuggestions()" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料、特売">
             <div id="tagSuggestions" class="flex flex-wrap gap-1 mt-1"></div>
           </div>
         </div>
 
-        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+        <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1.5">
           <p class="font-bold text-xs text-slate-700"><i class="fa-solid fa-store mr-1 text-blue-600"></i>店舗・日付・価格の記録</p>
           <div class="grid grid-cols-2 gap-2">
             <div><label class="block text-[10px] text-slate-500 mb-1">店舗名</label><input type="text" id="formStore" placeholder="例：イオン" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
             <div><label class="block text-[10px] text-slate-500 mb-1">支店・店舗名</label><input type="text" id="formBranch" placeholder="例：名古屋駅前店" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
             <div><label class="block text-[10px] text-slate-500 mb-1">価格（税抜・円）</label><input type="number" id="formPrice" min="0" step="1" placeholder="税抜価格" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
             <div class="col-span-2"><label class="block text-[10px] text-slate-500 mb-1">記録日</label><input type="date" id="formDate" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
+            <div class="col-span-2 flex items-center justify-between gap-2"><span id="formLocationStatus" class="text-[10px] text-slate-500">店舗位置：未登録</span><button type="button" onclick="captureStoreLocation()" class="shrink-0 px-2.5 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 text-[10px] font-semibold"><i class="fa-solid fa-location-dot mr-1"></i>現在地を店舗位置に記録</button></div>
+            <input type="hidden" id="formLat"><input type="hidden" id="formLng">
           </div>
         </div>
 
-        <div class="rounded-xl border border-slate-200 p-3 space-y-2">
-          <label class="block font-medium text-slate-700">商品画像</label>
+        <div class="rounded-lg border border-slate-200 p-2.5 space-y-1.5">
+          <label class="block text-[11px] font-medium text-slate-600">商品画像</label>
           <input type="hidden" id="formImageData">
           <input type="file" id="formImageFile" accept="image/*" onchange="handleProductImageSelect(event)" class="block w-full text-xs text-slate-600">
           <div id="formImagePreviewWrap" class="hidden flex items-center gap-3">
@@ -204,7 +208,7 @@
         </div>
 
         <div>
-          <label class="block font-medium text-slate-700 mb-1">備考欄</label>
+          <label class="block text-[11px] font-medium text-slate-600 mb-0.5">備考欄</label>
           <textarea id="formMemo" rows="2" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="特売情報やメモなど"></textarea>
         </div>
 
@@ -465,11 +469,7 @@
       document.getElementById(`view-${tab}`).classList.remove('hidden');
       document.getElementById(`tab-${tab}`).className = "py-2.5 nav-active whitespace-nowrap";
 
-      if (tab === 'map' && !map) {
-        initMap();
-      } else if (tab === 'map' && map) {
-        setTimeout(() => map.invalidateSize(), 100);
-      }
+      if (tab === 'map' && !map) { initMap(); } else if (tab === 'map' && map) { setTimeout(() => { map.invalidateSize(); refreshStoreMap(); }, 100); }
     }
 
     function clearSearchInput() {
@@ -600,9 +600,9 @@
         ${imageBlock}
         <section class="space-y-1"><p class="text-[11px] text-slate-500">${escapeHtml(item.maker || 'メーカー未登録')}</p><div class="flex items-start gap-2"><h2 class="text-lg font-bold text-slate-900 flex-1">${escapeHtml(item.name || '名称未設定')}</h2><span class="text-xs text-slate-500 whitespace-nowrap">${escapeHtml(item.content || '')}</span></div>${item.flavor ? `<p class="text-sm text-slate-600">${escapeHtml(item.flavor)}</p>` : ''}<p class="text-xs font-mono text-slate-500">JAN：${janText}</p><div class="flex flex-wrap gap-1 pt-1">${tags}</div>${item.memo ? `<p class="text-sm whitespace-pre-wrap bg-slate-50 rounded-lg p-3">${escapeHtml(item.memo)}</p>` : ''}</section>
         ${sameJanBlock}
-        ${similarJanBlock}
         <section class="space-y-2"><h4 class="font-bold text-sm text-slate-800"><i class="fa-solid fa-clock-rotate-left mr-1 text-blue-600"></i>登録された過去の価格データ</h4><div>${priceHistory}</div></section>
-        <section class="space-y-2"><h4 class="font-bold text-sm text-slate-800"><i class="fa-solid fa-cart-shopping mr-1 text-blue-600"></i>ECサイトで探す</h4><div class="grid grid-cols-2 gap-2"><a target="_blank" rel="noopener noreferrer" href="https://www.amazon.co.jp/s?k=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50"><i class="fa-brands fa-amazon mr-1"></i>Amazon</a><a target="_blank" rel="noopener noreferrer" href="https://search.rakuten.co.jp/search/mall/${q}/" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50">楽天市場</a><a target="_blank" rel="noopener noreferrer" href="https://shopping.yahoo.co.jp/search?p=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50">Yahoo!ショッピング</a><a target="_blank" rel="noopener noreferrer" href="https://www.google.com/search?tbm=shop&q=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50"><i class="fa-brands fa-google mr-1"></i>Google商品検索</a></div></section>`;
+        <section class="space-y-2"><h4 class="font-bold text-sm text-slate-800"><i class="fa-solid fa-cart-shopping mr-1 text-blue-600"></i>ECサイトで探す</h4><div class="grid grid-cols-2 gap-2"><a target="_blank" rel="noopener noreferrer" href="https://www.amazon.co.jp/s?k=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50"><i class="fa-brands fa-amazon mr-1"></i>Amazon</a><a target="_blank" rel="noopener noreferrer" href="https://search.rakuten.co.jp/search/mall/${q}/" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50">楽天市場</a><a target="_blank" rel="noopener noreferrer" href="https://shopping.yahoo.co.jp/search?p=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50">Yahoo!ショッピング</a><a target="_blank" rel="noopener noreferrer" href="https://www.google.com/search?tbm=shop&q=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50"><i class="fa-brands fa-google mr-1"></i>Google商品検索</a></div></section>
+        ${similarJanBlock}`;
       const editBtn = document.getElementById('detailEditButton');
       editBtn.classList.toggle('hidden', item.dbType === 'personal' && !currentUser);
       document.getElementById('detailModal').classList.remove('hidden');
@@ -949,6 +949,7 @@
         document.getElementById('formBranch').value = latestStore.branch || '';
         document.getElementById('formPrice').value = latestStore.price;
         document.getElementById('formDate').value = latestStore.date || '';
+        document.getElementById('formLat').value = latestStore.lat ?? ''; document.getElementById('formLng').value = latestStore.lng ?? ''; updateFormLocationStatus();
       }
       document.getElementById('modalTitle').textContent = '商品を編集';
       document.getElementById('deleteBtn').classList.remove('hidden');
@@ -986,7 +987,7 @@
         const normalizedName = storeName.trim();
         const normalizedBranch = storeBranch.trim();
         const storeIdx = stores.findIndex(st => String(st.name).trim().toLowerCase() === normalizedName.toLowerCase() && String(st.branch || '').trim().toLowerCase() === normalizedBranch.toLowerCase() && String(st.date || '') === date);
-        const record = { name: normalizedName, branch: normalizedBranch, price: Number(price), date };
+        const record = { name: normalizedName, branch: normalizedBranch, price: Number(price), date, lat: document.getElementById('formLat').value || (storeIdx >= 0 ? stores[storeIdx].lat : ''), lng: document.getElementById('formLng').value || (storeIdx >= 0 ? stores[storeIdx].lng : '') };
         if (storeIdx >= 0) stores[storeIdx] = record;
         else stores.push(record);
       }
@@ -1047,28 +1048,60 @@
 
     function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 
-    // --- 店舗マップ (Leaflet) ---
-    function initMap() {
-      map = L.map('map').setView([34.769, 137.391], 13);
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(map);
-
-      const known = localItems.flatMap(item => (item.stores || []).filter(st => Number.isFinite(Number(st.lat)) && Number.isFinite(Number(st.lng))).map(st => ({ ...st, itemName: item.name })));
-      known.forEach(st => L.marker([Number(st.lat), Number(st.lng)]).addTo(map).bindPopup(`<b>${escapeHtml(st.name)}</b><br>${escapeHtml(st.itemName)} ¥${Number(st.price).toLocaleString()}`));
-      if (!known.length) { const note = L.control({ position: 'bottomleft' }); note.onAdd = function() { const div = L.DomUtil.create('div', 'bg-white px-3 py-2 rounded shadow text-xs'); div.textContent = '店舗の位置情報は未登録です。現在地表示は利用できます。'; return div; }; note.addTo(map); }
+    function updateFormLocationStatus() {
+      const lat = document.getElementById('formLat')?.value, lng = document.getElementById('formLng')?.value;
+      const el = document.getElementById('formLocationStatus');
+      if (el) el.textContent = lat && lng ? `店舗位置：登録済み（${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}）` : '店舗位置：未登録';
+    }
+    function captureStoreLocation() {
+      if (!navigator.geolocation) { alert('この環境では位置情報を取得できません。'); return; }
+      navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById('formLat').value = pos.coords.latitude;
+        document.getElementById('formLng').value = pos.coords.longitude;
+        updateFormLocationStatus();
+      }, () => alert('位置情報を取得できませんでした。ブラウザの位置情報許可を確認してください。'), {enableHighAccuracy:true, timeout:10000});
     }
 
+    // --- 店舗マップ (Leaflet) ---
+    let mapMarkers = [];
+    let userLocationMarker = null;
+    function getMapStoreRecords() {
+      return localItems.flatMap(item => (Array.isArray(item.stores) ? item.stores : []).map((st, index) => ({...st, itemName:item.name || '名称未設定', itemId:item.id, itemDbType:item.dbType, recordIndex:index})).filter(st => st.name || st.branch));
+    }
+    function initMap() {
+      if (map) { setTimeout(() => map.invalidateSize(), 120); refreshStoreMap(); return; }
+      map = L.map('map', { zoomControl:true }).setView([36.2, 138.2], 5);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap contributors' }).addTo(map);
+      refreshStoreMap();
+    }
+    function refreshStoreMap() {
+      if (!map) return;
+      mapMarkers.forEach(marker => map.removeLayer(marker)); mapMarkers = [];
+      const records = getMapStoreRecords();
+      const located = records.filter(st => Number.isFinite(Number(st.lat)) && Number.isFinite(Number(st.lng)) && st.lat !== '' && st.lng !== '');
+      document.getElementById('mapStoreCount').textContent = records.length;
+      document.getElementById('mapPinCount').textContent = located.length;
+      const list = document.getElementById('mapStoreList');
+      if (!records.length) list.innerHTML = '<p class="text-xs text-slate-500 py-2">店舗の価格記録がまだありません。商品登録時に店舗名・支店名を入力すると、ここに一覧表示されます。</p>';
+      else list.innerHTML = records.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(st => `<div class="flex items-center justify-between gap-2 border-b border-slate-100 last:border-0 py-2"><div class="min-w-0"><p class="text-xs font-semibold text-slate-800 truncate">${escapeHtml(st.name || '店舗名未登録')}${st.branch ? ' / '+escapeHtml(st.branch) : ''}</p><p class="text-[10px] text-slate-500 truncate">${escapeHtml(st.itemName)} · ${escapeHtml(st.date || '日付なし')} · ${st.price === '' || st.price == null ? '価格未登録' : '¥'+Number(st.price).toLocaleString()}</p></div>${Number.isFinite(Number(st.lat)) && Number.isFinite(Number(st.lng)) && st.lat !== '' && st.lng !== '' ? `<button onclick="focusStoreMap(${Number(st.lat)},${Number(st.lng)})" class="shrink-0 text-[10px] px-2 py-1 rounded-md bg-blue-50 text-blue-700">地図で見る</button>` : '<span class="shrink-0 text-[10px] text-slate-400">位置未登録</span>'}</div>`).join('');
+      located.forEach(st => { const marker = L.marker([Number(st.lat), Number(st.lng)]).addTo(map).bindPopup(`<b>${escapeHtml(st.name || '店舗')}</b>${st.branch ? ' / '+escapeHtml(st.branch) : ''}<br>${escapeHtml(st.itemName)}<br>${st.price === '' || st.price == null ? '価格未登録' : '¥'+Number(st.price).toLocaleString()}`); mapMarkers.push(marker); });
+      if (located.length) fitStoreMap();
+    }
+    function fitStoreMap() {
+      if (!map) return;
+      if (mapMarkers.length === 1) map.setView(mapMarkers[0].getLatLng(), 15);
+      else if (mapMarkers.length > 1) map.fitBounds(L.featureGroup(mapMarkers).getBounds().pad(0.18), {maxZoom:15});
+      else map.setView([36.2, 138.2], 5);
+    }
+    function focusStoreMap(lat, lng) { if (map) { map.setView([lat,lng], 16); } }
     function locateUser() {
-      if (navigator.geolocation && map) {
-        navigator.geolocation.getCurrentPosition(pos => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          map.setView([lat, lng], 15);
-          L.marker([lat, lng]).addTo(map).bindPopup('現在地').openPopup();
-        });
-      }
+      if (!navigator.geolocation || !map) { alert('この環境では現在地を取得できません。'); return; }
+      navigator.geolocation.getCurrentPosition(pos => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        if (userLocationMarker) map.removeLayer(userLocationMarker);
+        userLocationMarker = L.circleMarker([lat,lng], {radius:9,color:'#fff',weight:3,fillColor:'#2563eb',fillOpacity:1}).addTo(map).bindPopup('現在地').openPopup();
+        map.setView([lat,lng], 15);
+      }, err => alert('現在地を取得できませんでした。位置情報の許可設定をご確認ください。'), {enableHighAccuracy:true, timeout:10000});
     }
 
     function saveLocalStorage() {
