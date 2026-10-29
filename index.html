@@ -136,7 +136,7 @@
         </div>
       </div>
 
-      <!-- 高解像度地図表示領域 -->
+      <!-- 地図表示領域 -->
       <div id="map" class="w-full h-[500px] rounded-xl border border-slate-200 shadow-inner"></div>
     </section>
 
@@ -157,7 +157,7 @@
 
   </main>
 
-  <!-- Modal: JANコードスキャナー (高精度モード) -->
+  <!-- Modal: JANコードスキャナー -->
   <div id="scanModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
       <div class="flex justify-between items-center border-b pb-2">
@@ -248,7 +248,7 @@
     let html5QrcodeScanner = null;
     let map = null;
     let mapMarkers = [];
-    let userCurrentCoords = null; // 現在地保持用 (lat, lng)
+    let userCurrentCoords = null;
 
     let localItems = JSON.parse(localStorage.getItem('smart_item_db')) || [
       {
@@ -448,11 +448,10 @@
       renderItems();
     }
 
-    // --- 【精度向上】高精度JANコードカメラ読み取り ---
+    // --- 高精度JANコードカメラ読み取り ---
     function openScanModal() {
       document.getElementById('scanModal').classList.remove('hidden');
       
-      // 解像度やフォーカス、スキャン頻度（fps）を最適化
       const config = {
         fps: 20, 
         qrbox: { width: 280, height: 140 },
@@ -470,13 +469,10 @@
         { facingMode: "environment" },
         config,
         (decodedText) => {
-          // 成功時に音またはバイブレーション等を入れても良い
           closeScanModal();
           openItemModalWithJan(decodedText);
         },
-        (errorMessage) => {
-          // スキャン中の細かいエラーは無視して継続
-        }
+        (errorMessage) => {}
       ).catch(err => {
         console.error("Camera start error:", err);
         alert("カメラを起動できませんでした。権限またはSSL(HTTPS)接続をご確認ください。");
@@ -582,24 +578,22 @@
       renderItems();
     }
 
-    // --- 【高解像度化・現在地基準検索】店舗マップ機能 ---
+    // --- 店舗マップ機能 (標準 OpenStreetMap タイルに変更しAPIキーエラーを完全解消) ---
     function initMap() {
-      // 初期位置 (豊橋中心など)
       map = L.map('map', {
         zoomControl: true,
         attributionControl: true
       }).setView([34.769, 137.391], 13);
 
-      // 高解像度・詳細なタイルレイヤー (CartoDB Positron / OpenStreetMap等で高精細表示)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      // 完全無料・APIキー不要の公式標準 OpenStreetMap タイル
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '© <a href="https://carto.com/">CARTO</a>, © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
 
       updateMapMarkers();
     }
 
-    // 登録店舗のピン配置
     function updateMapMarkers() {
       if (!map) return;
 
@@ -621,13 +615,7 @@
       });
 
       storeMap.forEach((itemsList, storeName) => {
-        // 現在地があればビューポート周辺を優先検索
-        let searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(storeName)}`;
-        if (userCurrentCoords) {
-          // 簡易的に現在地付近のパラメータを含めることも可能
-        }
-
-        fetch(searchUrl)
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(storeName)}`)
           .then(res => res.json())
           .then(data => {
             if (data && data.length > 0) {
@@ -642,7 +630,6 @@
       });
     }
 
-    // 【現在地基準対応】マップ上の店舗・エリア検索
     async function searchStoreOnMap() {
       const query = document.getElementById('mapSearchInput').value.trim();
       if (!query) {
@@ -650,11 +637,9 @@
         return;
       }
 
-      // 現在地が取得済みの場合は、検索クエリに現在地周辺のビューやキーワードを補完、あるいは現在地を基準にピンを立てる
       let searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
       
       if (userCurrentCoords) {
-        // 緯度経度付近を優先させるためのパラメータを付与 (viewbox)
         const lat = userCurrentCoords.lat;
         const lon = userCurrentCoords.lng;
         searchUrl += `&viewbox=${lon-0.1},${lat+0.1},${lon+0.1},${lat-0.1}&bounded=1`;
@@ -681,14 +666,12 @@
       }
     }
 
-    // 【現在地取得】取得成功時に位置情報を記録し、そこを基準に地図を移動
     function locateUser() {
       if (navigator.geolocation && map) {
         navigator.geolocation.getCurrentPosition(pos => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           
-          // 現在地を保存（マップ検索の基準にするため）
           userCurrentCoords = { lat, lng };
 
           map.setView([lat, lng], 16);
