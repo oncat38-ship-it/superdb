@@ -26,12 +26,14 @@
   <style>
     body { font-family: 'Inter', sans-serif; }
     .nav-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
-    #reader { position: relative; width: 100%; min-height: 240px; background: #0f172a; overflow: hidden; border-radius: .75rem; }
-    #reader video { display:block; width:100% !important; height:280px !important; object-fit:cover; }
+    #reader { position: relative; width: 100%; height: 300px; background: #0f172a; overflow: hidden; border-radius: .75rem; }
+    #reader video { display:block; width:100% !important; height:100% !important; object-fit:cover; }
     #reader canvas.drawingBuffer { position:absolute; inset:0; width:100% !important; height:100% !important; }
+    #reader::after { content:''; position:absolute; left:8%; right:8%; top:34%; height:32%; border:2px solid rgba(52,211,153,.95); border-radius:8px; box-shadow:0 0 0 999px rgba(15,23,42,.22); pointer-events:none; z-index:4; }
+    #reader::before { content:'JANバーコードを緑の枠に合わせる'; position:absolute; z-index:5; left:0; right:0; top:calc(34% - 26px); color:white; text-align:center; font-size:11px; text-shadow:0 1px 3px #000; pointer-events:none; }
     input, textarea, button { -webkit-tap-highlight-color: transparent; }
     .compact-panel { padding: .75rem !important; border-radius: .8rem !important; }
-    @media (max-width: 640px) { #reader video { height: 240px !important; } }
+    @media (max-width: 640px) { #reader { height: 260px; } }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
@@ -62,9 +64,6 @@
       </button>
       <button onclick="switchTab('map')" id="tab-map" class="py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap">
         <i class="fa-solid fa-map-location-dot mr-1.5"></i>店舗マップ
-      </button>
-      <button onclick="switchTab('settings')" id="tab-settings" class="py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap">
-        <i class="fa-solid fa-gear mr-1.5"></i>API・EC設定
       </button>
     </nav>
   </header>
@@ -133,29 +132,6 @@
       <div id="map" class="w-full h-[500px] rounded-xl border border-slate-200 shadow-inner"></div>
     </section>
 
-    <!-- TAB 3: API & アフィリエイト設定 -->
-    <section id="view-settings" class="hidden space-y-4">
-      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 max-w-2xl mx-auto text-xs md:text-sm">
-        <div>
-          <h2 class="font-bold text-base text-slate-900">外部API & アフィリエイト設定</h2>
-          <p class="text-slate-500 text-xs mt-0.5">取得したYahoo! JAPANのClient IDを設定すると、商品名や価格の自動補完機能が有効化されます。</p>
-        </div>
-
-        <div class="space-y-3 pt-2">
-          <div>
-            <label class="block font-medium mb-1 text-slate-700">Yahoo! JAPAN アプリケーションID (Client ID)</label>
-            <input type="text" id="settingYahooId" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 font-mono" placeholder="dj00aix...">
-          </div>
-          <div>
-            <label class="block font-medium mb-1 text-slate-700">Amazon アソシエイト タグ (Tracking ID)</label>
-            <input type="text" id="settingAmazonTag" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 font-mono" placeholder="yourtag-22">
-          </div>
-          <button onclick="saveSettings()" class="bg-blue-600 text-white font-medium px-4 py-2.5 rounded-lg hover:bg-blue-700 w-full transition shadow-sm">
-            設定を保存する
-          </button>
-        </div>
-      </div>
-    </section>
 
   </main>
 
@@ -183,14 +159,11 @@
       <form id="itemForm" onsubmit="handleSaveItem(event)" class="space-y-3">
         <input type="hidden" id="editItemId">
 
-        <div>
-          <label class="block font-medium text-slate-700 mb-1">商品名 <span class="text-red-500">*</span></label>
-          <div class="flex gap-2">
-            <input type="text" id="formName" required class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: エナジードリンク 250ml">
-            <button type="button" id="apiSearchBtn" onclick="fetchProductByYahooApi()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition shadow-sm">
-              <i class="fa-solid fa-magnifying-glass mr-1"></i>Yahoo!検索
-            </button>
-          </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block font-medium text-slate-700 mb-1">メーカー名</label><input type="text" id="formMaker" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：サントリー"></div>
+          <div><label class="block font-medium text-slate-700 mb-1">商品名 <span class="text-red-500">*</span></label><input type="text" id="formName" required class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：天然水"></div>
+          <div><label class="block font-medium text-slate-700 mb-1">フレーバー・種類など</label><input type="text" id="formFlavor" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：レモン、無糖"></div>
+          <div><label class="block font-medium text-slate-700 mb-1">内容量</label><input type="text" id="formContent" class="w-full p-2 border border-slate-300 rounded-lg" placeholder="例：500ml、6本"></div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
@@ -200,16 +173,18 @@
           </div>
           <div>
             <label class="block font-medium text-slate-700 mb-1">タグ (カンマ区切り)</label>
-            <input type="text" id="formTags" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料, 特売">
+            <input type="text" id="formTags" autocomplete="off" oninput="renderTagSuggestions()" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料, 特売">
+            <div id="tagSuggestions" class="flex flex-wrap gap-1 mt-1"></div>
           </div>
         </div>
 
         <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
           <p class="font-bold text-xs text-slate-700"><i class="fa-solid fa-store mr-1 text-blue-600"></i>店舗・日付・価格の記録</p>
-          <div class="grid grid-cols-3 gap-2">
-            <input type="text" id="formStore" placeholder="店舗名 (例: イオン)" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            <input type="number" id="formPrice" placeholder="価格 (円)" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            <input type="date" id="formDate" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[10px] text-slate-500 mb-1">店舗名</label><input type="text" id="formStore" placeholder="例：イオン" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
+            <div><label class="block text-[10px] text-slate-500 mb-1">支店・店舗名</label><input type="text" id="formBranch" placeholder="例：名古屋駅前店" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
+            <div><label class="block text-[10px] text-slate-500 mb-1">価格（円）</label><input type="number" id="formPrice" placeholder="価格" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
+            <div><label class="block text-[10px] text-slate-500 mb-1">記録日</label><input type="date" id="formDate" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
           </div>
         </div>
 
@@ -279,12 +254,13 @@
     let lastScanCode = '';
     let lastScanCount = 0;
     let lastScanAt = 0;
+    let scanSessionId = 0;
+    let scanConfirmed = false;
 
     document.addEventListener("DOMContentLoaded", () => {
       initAuth();
       renderItems();
       renderTags();
-      loadSettingsToForm();
     });
 
     // --- 認証 ---
@@ -341,7 +317,7 @@
     }
 
     function switchTab(tab) {
-      ['items', 'map', 'settings'].forEach(t => {
+      ['items', 'map'].forEach(t => {
         document.getElementById(`view-${t}`).classList.add('hidden');
         document.getElementById(`tab-${t}`).className = "py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap";
       });
@@ -364,9 +340,9 @@
         if (item.dbType !== currentDbType) return false;
         if (selectedTag && (!item.tags || !item.tags.includes(selectedTag))) return false;
         if (search) {
-          const matchName = item.name.toLowerCase().includes(search);
+          const matchName = [item.maker, item.name, item.flavor, item.content].filter(Boolean).join(' ').toLowerCase().includes(search);
           const matchJan = item.jan && item.jan.includes(search);
-          const matchStore = item.stores && item.stores.some(s => s.name.toLowerCase().includes(search));
+          const matchStore = item.stores && item.stores.some(s => [s.name, s.branch].filter(Boolean).join(' ').toLowerCase().includes(search));
           return matchName || matchJan || matchStore;
         }
         return true;
@@ -402,7 +378,7 @@
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 flex flex-col justify-between space-y-3">
             <div>
               <div class="flex justify-between items-start mb-1">
-                <h3 class="font-bold text-slate-900 text-sm leading-snug">${item.name}</h3>
+                <h3 class="font-bold text-slate-900 text-sm leading-snug">${escapeHtml(item.maker ? item.maker + ' ' : '')}${escapeHtml(item.name || '')}${escapeHtml(item.flavor ? ' · ' + item.flavor : '')}${escapeHtml(item.content ? ' · ' + item.content : '')}</h3>
                 <button onclick="editItem('${item.id}')" class="text-slate-400 hover:text-blue-600 text-xs p-1" title="編集・削除">
                   <i class="fa-solid fa-pen"></i>
                 </button>
@@ -417,7 +393,7 @@
                   <span>${lowestStore ? lowestStore.date : '-'}</span>
                 </div>
                 <div class="flex justify-between items-baseline">
-                  <span class="font-bold text-slate-800 text-xs">${lowestStore ? lowestStore.name : '未記録'}</span>
+                  <span class="font-bold text-slate-800 text-xs">${lowestStore ? escapeHtml([lowestStore.name, lowestStore.branch].filter(Boolean).join(' ')) : '未記録'}</span>
                   <span class="text-blue-700 font-extrabold text-base">${lowestStore ? '¥' + Number(lowestStore.price).toLocaleString() : '-'}</span>
                 </div>
               </div>
@@ -462,6 +438,28 @@
       renderItems();
     }
 
+    function renderTagSuggestions() {
+      const input = document.getElementById('formTags');
+      const box = document.getElementById('tagSuggestions');
+      if (!input || !box) return;
+      const pieces = input.value.split(',');
+      const current = (pieces[pieces.length - 1] || '').trim().toLowerCase();
+      const used = pieces.slice(0, -1).map(t => t.trim().toLowerCase()).filter(Boolean);
+      const all = new Set();
+      localItems.forEach(item => (item.tags || []).forEach(tag => all.add(String(tag))));
+      const suggestions = [...all].filter(tag => !used.includes(tag.toLowerCase()) && (!current || tag.toLowerCase().includes(current))).slice(0, 8);
+      box.innerHTML = suggestions.map(tag => `<button type="button" class="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 text-[10px]" onclick="addTagSuggestion('${escapeHtml(tag).replace(/'/g, '&#39;')}')">+ ${escapeHtml(tag)}</button>`).join('');
+    }
+
+    function addTagSuggestion(tag) {
+      const input = document.getElementById('formTags');
+      const pieces = input.value.split(',').map(t => t.trim()).filter(Boolean);
+      if (!pieces.some(t => t.toLowerCase() === tag.toLowerCase())) pieces.push(tag);
+      input.value = pieces.join(', ') + ', ';
+      input.focus();
+      renderTagSuggestions();
+    }
+
     // --- JANコードカメラ読み取り（JAN Master ProのQuagga2方式） ---
     function openScanModal() {
       document.getElementById('scanModal').classList.remove('hidden');
@@ -471,6 +469,8 @@
     async function startScanCamera() {
       if (scannerActive || scannerStarting) return;
       scannerStarting = true;
+      scanConfirmed = false;
+      const thisSession = ++scanSessionId;
       const status = document.getElementById('scanStatus');
       status.textContent = 'カメラを起動しています…';
       const reader = document.getElementById('reader');
@@ -488,13 +488,14 @@
       try {
         try { Quagga.offDetected(onScanDetected); Quagga.stop(); } catch (_) {}
         Quagga.init({
-          inputStream: { name: 'Live', type: 'LiveStream', target: reader, constraints: { facingMode: 'environment', width: { ideal: 1600 }, height: { ideal: 900 } } },
-          locator: { patchSize: 'medium', halfSample: true },
+          inputStream: { name: 'Live', type: 'LiveStream', target: reader, constraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+          locator: { patchSize: 'large', halfSample: false },
           numOfWorkers: navigator.hardwareConcurrency ? Math.min(4, navigator.hardwareConcurrency) : 2,
-          frequency: 10,
-          decoder: { readers: ['ean_reader', 'ean_8_reader', 'i2of5_reader', 'upc_reader'] },
+          frequency: 12,
+          decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader'] },
           locate: true
         }, err => {
+          if (thisSession !== scanSessionId) { try { Quagga.stop(); } catch (_) {} return; }
           scannerStarting = false;
           if (err) {
             console.error('Quagga init error:', err);
@@ -507,7 +508,7 @@
             Quagga.start();
             scannerActive = true;
             scannerStarting = false;
-            status.textContent = 'バーコードを枠内に合わせてください。読み取り確定後にカメラは自動停止します。';
+            status.textContent = 'JANを緑の枠内に水平に合わせ、反射を避けてください。2回連続で一致すると自動停止します。';
             const track = Quagga.CameraAccess && Quagga.CameraAccess.getActiveTrack ? Quagga.CameraAccess.getActiveTrack() : null;
             if (track && track.applyConstraints) {
               const caps = track.getCapabilities ? track.getCapabilities() : {};
@@ -537,7 +538,7 @@
     }
 
     function onScanDetected(result) {
-      if (!scannerActive) return;
+      if (!scannerActive || scanConfirmed) return;
       const raw = result && result.codeResult && result.codeResult.code;
       const code = String(raw || '').replace(/\D/g, '');
       if (!validJanOrItf(code)) return;
@@ -546,23 +547,32 @@
       else { lastScanCode = code; lastScanCount = 1; }
       lastScanAt = now;
       if (lastScanCount < 2) return;
+      scanConfirmed = true;
       lastScanCount = 0;
+      document.getElementById('scanStatus').textContent = '読み取り成功：' + code + '（カメラ停止中…）';
       stopScanCamera();
-      document.getElementById('scanStatus').textContent = '読み取り成功：' + code;
-      openItemModalWithJan(code);
+      setTimeout(() => {
+        const modal = document.getElementById('scanModal');
+        if (modal && !modal.classList.contains('hidden')) modal.classList.add('hidden');
+        openItemModalWithJan(code);
+      }, 120);
     }
 
     function stopScanCamera() {
       scannerActive = false;
       scannerStarting = false;
+      scanSessionId++; // 起動途中のコールバックが後からカメラを再開しないよう無効化
       try { if (window.Quagga) { Quagga.offDetected(onScanDetected); Quagga.stop(); } } catch (err) { console.debug('scanner cleanup', err); }
+      try { if (window.Quagga && Quagga.CameraAccess && Quagga.CameraAccess.release) Quagga.CameraAccess.release(); } catch (_) {}
       const reader = document.getElementById('reader');
-      if (reader) reader.querySelectorAll('video').forEach(v => { try { const stream = v.srcObject; if (stream) stream.getTracks().forEach(t => t.stop()); } catch (_) {} });
+      if (reader) reader.querySelectorAll('video').forEach(v => {
+        try { v.pause(); const stream = v.srcObject; if (stream) stream.getTracks().forEach(t => { t.stop(); }); v.srcObject = null; } catch (_) {}
+      });
     }
 
     function restartScanCamera() {
       stopScanCamera();
-      lastScanCode = ''; lastScanCount = 0; lastScanAt = 0;
+      lastScanCode = ''; lastScanCount = 0; lastScanAt = 0; scanConfirmed = false;
       startScanCamera();
     }
 
@@ -642,6 +652,7 @@
       document.getElementById('modalTitle').textContent = '商品を新規登録';
       document.getElementById('deleteBtn').classList.add('hidden');
       document.getElementById('itemModal').classList.remove('hidden');
+      renderTagSuggestions();
     }
 
     function editItem(id) {
@@ -649,19 +660,24 @@
       if (!item) return;
 
       document.getElementById('editItemId').value = item.id;
-      document.getElementById('formName').value = item.name;
+      document.getElementById('formMaker').value = item.maker || '';
+      document.getElementById('formName').value = item.name || '';
+      document.getElementById('formFlavor').value = item.flavor || '';
+      document.getElementById('formContent').value = item.content || '';
       document.getElementById('formJan').value = item.jan || '';
       document.getElementById('formTags').value = (item.tags || []).join(', ');
       document.getElementById('formMemo').value = item.memo || '';
       if (item.stores && item.stores.length > 0) {
         const latestStore = [...item.stores].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
-        document.getElementById('formStore').value = latestStore.name;
+        document.getElementById('formStore').value = latestStore.name || '';
+        document.getElementById('formBranch').value = latestStore.branch || '';
         document.getElementById('formPrice').value = latestStore.price;
         document.getElementById('formDate').value = latestStore.date || '';
       }
       document.getElementById('modalTitle').textContent = '商品を編集';
       document.getElementById('deleteBtn').classList.remove('hidden');
       document.getElementById('itemModal').classList.remove('hidden');
+      renderTagSuggestions();
     }
 
     function closeItemModal() {
@@ -671,10 +687,14 @@
     function handleSaveItem(e) {
       e.preventDefault();
       const id = document.getElementById('editItemId').value || 'item_' + Date.now();
-      const name = document.getElementById('formName').value;
+      const maker = document.getElementById('formMaker').value.trim();
+      const name = document.getElementById('formName').value.trim();
+      const flavor = document.getElementById('formFlavor').value.trim();
+      const content = document.getElementById('formContent').value.trim();
       const jan = document.getElementById('formJan').value;
       const tagsStr = document.getElementById('formTags').value;
       const storeName = document.getElementById('formStore').value;
+      const storeBranch = document.getElementById('formBranch').value;
       const price = document.getElementById('formPrice').value;
       const date = document.getElementById('formDate').value || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
       const memo = document.getElementById('formMemo').value;
@@ -686,12 +706,13 @@
       const stores = existing && Array.isArray(existing.stores) ? [...existing.stores] : [];
       if (storeName.trim() && price !== '' && Number.isFinite(Number(price)) && Number(price) >= 0) {
         const normalizedName = storeName.trim();
-        const storeIdx = stores.findIndex(st => String(st.name).trim().toLowerCase() === normalizedName.toLowerCase() && String(st.date || '') === date);
-        const record = { name: normalizedName, price: Number(price), date };
+        const normalizedBranch = storeBranch.trim();
+        const storeIdx = stores.findIndex(st => String(st.name).trim().toLowerCase() === normalizedName.toLowerCase() && String(st.branch || '').trim().toLowerCase() === normalizedBranch.toLowerCase() && String(st.date || '') === date);
+        const record = { name: normalizedName, branch: normalizedBranch, price: Number(price), date };
         if (storeIdx >= 0) stores[storeIdx] = record;
         else stores.push(record);
       }
-      const newItem = { id, name: name.trim(), jan: jan.trim(), tags, memo: memo.trim(), stores, dbType: existing ? existing.dbType : currentDbType, updatedAt: new Date().toISOString() };
+      const newItem = { id, maker, name, flavor, content, jan: jan.trim(), tags, memo: memo.trim(), stores, dbType: existing ? existing.dbType : currentDbType, updatedAt: new Date().toISOString() };
       if (idx >= 0) localItems[idx] = newItem;
       else localItems.unshift(newItem);
 
@@ -731,7 +752,7 @@
         } else {
           const stores = Array.isArray(target.stores) ? [...target.stores] : [];
           (source.stores || []).forEach(st => {
-            const duplicate = stores.some(x => String(x.name).trim().toLowerCase() === String(st.name).trim().toLowerCase() && String(x.date || '') === String(st.date || '') && Number(x.price) === Number(st.price));
+            const duplicate = stores.some(x => String(x.name).trim().toLowerCase() === String(st.name).trim().toLowerCase() && String(x.branch || '').trim().toLowerCase() === String(st.branch || '').trim().toLowerCase() && String(x.date || '') === String(st.date || '') && Number(x.price) === Number(st.price));
             if (!duplicate) stores.push({ ...st });
           });
           target.stores = stores;
@@ -770,24 +791,6 @@
           L.marker([lat, lng]).addTo(map).bindPopup('現在地').openPopup();
         });
       }
-    }
-
-    // --- 設定保存 ---
-    function saveSettings() {
-      appSettings.yahooId = document.getElementById('settingYahooId').value.trim();
-      appSettings.amazonTag = document.getElementById('settingAmazonTag').value.trim();
-      try {
-        localStorage.setItem('smart_item_settings', JSON.stringify(appSettings));
-        alert('設定をこの端末に保存しました。別端末への同期はまだ行いません。');
-      } catch (err) {
-        console.error('設定保存失敗:', err);
-        alert('設定を保存できませんでした。ブラウザの保存容量やプライベートブラウズ設定を確認してください。');
-      }
-    }
-
-    function loadSettingsToForm() {
-      document.getElementById('settingYahooId').value = appSettings.yahooId || "";
-      document.getElementById('settingAmazonTag').value = appSettings.amazonTag || "";
     }
 
     function saveLocalStorage() {
