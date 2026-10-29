@@ -15,8 +15,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- html5-qrcode (JANバーコードスキャナ) -->
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <!-- JAN Master Proと同系統のQuagga2スキャナ -->
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
 
   <!-- Firebase v10 Compat -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -26,40 +26,33 @@
   <style>
     body { font-family: 'Inter', sans-serif; }
     .nav-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
-    #reader video { border-radius: 0.75rem; width: 100% !important; height: auto !important; object-fit: cover; }
-    
-    @keyframes scanLine {
-      0% { top: 5%; }
-      50% { top: 90%; }
-      100% { top: 5%; }
-    }
-    .scanner-laser {
-      position: absolute;
-      left: 0; right: 0;
-      height: 2px;
-      background: #ef4444;
-      box-shadow: 0 0 8px #ef4444;
-      animation: scanLine 2s infinite linear;
-      z-index: 20;
-    }
+    #reader { position: relative; width: 100%; min-height: 240px; background: #0f172a; overflow: hidden; border-radius: .75rem; }
+    #reader video { display:block; width:100% !important; height:280px !important; object-fit:cover; }
+    #reader canvas.drawingBuffer { position:absolute; inset:0; width:100% !important; height:100% !important; }
+    input, textarea, button { -webkit-tap-highlight-color: transparent; }
+    .compact-panel { padding: .75rem !important; border-radius: .8rem !important; }
+    @media (max-width: 640px) { #reader video { height: 240px !important; } }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
   <!-- ヘッダー -->
   <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+    <div class="max-w-6xl mx-auto px-3 py-2.5 flex justify-between items-center">
       <div class="flex items-center space-x-2.5">
         <div class="bg-blue-600 text-white p-2 rounded-xl text-lg font-bold shadow-sm">
           <i class="fa-solid fa-barcode"></i>
         </div>
         <div>
           <h1 class="text-base font-bold leading-tight text-slate-900">Smart Item DB</h1>
-          <p class="text-[11px] text-slate-500">店舗＆EC最安値データベース</p>
+          <p class="text-[11px] text-slate-500">店舗＆EC価格管理 <span class="text-emerald-600">· この端末に保存</span></p>
         </div>
       </div>
 
-      <div id="userInfoArea" class="flex items-center space-x-3"></div>
+      <!-- ログイン状況・ユーザーエリア -->
+      <div id="userInfoArea" class="flex items-center space-x-3">
+        <!-- JS動的描画 -->
+      </div>
     </div>
 
     <!-- ナビゲーションタブ -->
@@ -68,20 +61,23 @@
         <i class="fa-solid fa-boxes-stacked mr-1.5"></i>商品・価格一覧
       </button>
       <button onclick="switchTab('map')" id="tab-map" class="py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap">
-        <i class="fa-solid fa-map-location-dot mr-1.5"></i>店舗マップ・検索
+        <i class="fa-solid fa-map-location-dot mr-1.5"></i>店舗マップ
       </button>
       <button onclick="switchTab('settings')" id="tab-settings" class="py-2.5 text-slate-600 hover:text-blue-600 whitespace-nowrap">
-        <i class="fa-solid fa-gear mr-1.5"></i>アプリ設定
+        <i class="fa-solid fa-gear mr-1.5"></i>API・EC設定
       </button>
     </nav>
   </header>
 
   <!-- メインコンテンツ -->
-  <main class="flex-1 max-w-6xl w-full mx-auto p-4 space-y-4">
+  <main class="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-4 space-y-3">
 
-    <!-- TAB 1: 商品一覧 -->
+    <!-- TAB 1: 商品一覧＆データベース -->
     <section id="view-items" class="space-y-4">
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+      
+      <!-- DB切り替え & アクションバー -->
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        <!-- 個人 / オープン DB切り替え -->
         <div class="flex bg-slate-100 p-1 rounded-lg self-start">
           <button id="dbTypePersonal" onclick="setDbType('personal')" class="px-4 py-1.5 text-xs font-semibold rounded-md bg-white text-blue-600 shadow-sm transition">
             <i class="fa-solid fa-user mr-1"></i>個人 DB
@@ -91,6 +87,7 @@
           </button>
         </div>
 
+        <!-- 各種アクションボタン -->
         <div class="flex flex-wrap gap-2">
           <button onclick="openScanModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg text-xs font-medium flex items-center shadow-sm transition">
             <i class="fa-solid fa-camera mr-1.5"></i>JANスキャン
@@ -98,104 +95,86 @@
           <button onclick="openItemModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-medium flex items-center shadow-sm transition">
             <i class="fa-solid fa-plus mr-1.5"></i>商品登録
           </button>
-          <button onclick="triggerMerge()" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-xs font-medium flex items-center shadow-sm transition">
+          <button onclick="triggerMerge()" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-xs font-medium flex items-center shadow-sm transition" title="オープンDBと個人DBをマージします">
             <i class="fa-solid fa-code-merge mr-1.5"></i>DBマージ
           </button>
         </div>
       </div>
 
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+      <!-- 検索・フィルターバー -->
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-3">
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
-          <input type="text" id="searchInput" oninput="filterItems()" placeholder="メーカー、商品名、フレーバー、JAN、店舗名で検索..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <input type="text" id="searchInput" oninput="filterItems()" placeholder="商品名、JANコード、店舗名で検索..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
-        <div id="tagContainer" class="flex flex-wrap gap-1.5 pt-0.5 text-xs"></div>
+        <!-- タグバッジ一覧 -->
+        <div id="tagContainer" class="flex flex-wrap gap-1.5 pt-0.5 text-xs">
+          <!-- JS動的生成 -->
+        </div>
       </div>
 
-      <div id="itemList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <!-- 商品グリッドカード -->
+      <div id="itemList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- JS動的描画 -->
+      </div>
     </section>
 
     <!-- TAB 2: 店舗マップ -->
     <section id="view-map" class="hidden space-y-4">
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
-          <div>
-            <h2 class="font-bold text-slate-800 text-sm">店舗マップ・エリア検索</h2>
-            <p class="text-xs text-slate-500">登録された店舗や支店名を自動で地図上に反映・検索できます。</p>
-          </div>
-          <button onclick="locateUser()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-3.5 py-1.5 rounded-lg font-medium transition shadow-sm">
-            <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を基準にする
-          </button>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+        <div>
+          <h2 class="font-bold text-slate-800 text-sm">周辺の取扱店舗マップ</h2>
+          <p class="text-xs text-slate-500">GPS・地図から購入店舗の位置を確認</p>
         </div>
-        <div class="flex gap-2 pt-1">
-          <input type="text" id="mapSearchInput" placeholder="店舗名や地域を入力 (例: イオン 豊橋南店)" class="flex-1 p-2 border border-slate-300 rounded-lg text-xs md:text-sm bg-slate-50">
-          <button onclick="searchStoreOnMap()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-medium transition whitespace-nowrap">
-            <i class="fa-solid fa-magnifying-glass mr-1"></i>店舗を探す
-          </button>
-        </div>
+        <button onclick="locateUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-300">
+          <i class="fa-solid fa-location-crosshairs mr-1"></i>現在地を取得
+        </button>
       </div>
       <div id="map" class="w-full h-[500px] rounded-xl border border-slate-200 shadow-inner"></div>
     </section>
 
-    <!-- TAB 3: 設定 -->
+    <!-- TAB 3: API & アフィリエイト設定 -->
     <section id="view-settings" class="hidden space-y-4">
       <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 max-w-2xl mx-auto text-xs md:text-sm">
         <div>
-          <h2 class="font-bold text-base text-slate-900">アプリケーション設定</h2>
-          <p class="text-slate-500 text-xs mt-0.5">データはローカルストレージに安全に保護・保存されています。</p>
+          <h2 class="font-bold text-base text-slate-900">外部API & アフィリエイト設定</h2>
+          <p class="text-slate-500 text-xs mt-0.5">取得したYahoo! JAPANのClient IDを設定すると、商品名や価格の自動補完機能が有効化されます。</p>
         </div>
-        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-600 text-xs space-y-1">
-          <p class="font-bold text-slate-700">ステータス</p>
-          <p>・Firebase Authentication 接続済み</p>
-          <p>・永続ストレージ同期 (v4) 有効</p>
+
+        <div class="space-y-3 pt-2">
+          <div>
+            <label class="block font-medium mb-1 text-slate-700">Yahoo! JAPAN アプリケーションID (Client ID)</label>
+            <input type="text" id="settingYahooId" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 font-mono" placeholder="dj00aix...">
+          </div>
+          <div>
+            <label class="block font-medium mb-1 text-slate-700">Amazon アソシエイト タグ (Tracking ID)</label>
+            <input type="text" id="settingAmazonTag" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 font-mono" placeholder="yourtag-22">
+          </div>
+          <button onclick="saveSettings()" class="bg-blue-600 text-white font-medium px-4 py-2.5 rounded-lg hover:bg-blue-700 w-full transition shadow-sm">
+            設定を保存する
+          </button>
         </div>
       </div>
     </section>
 
   </main>
 
-  <!-- Modal 1: 高精度JANスキャナー (zIndex: 90) -->
-  <div id="scanModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[90] hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-md w-full p-5 space-y-3 shadow-2xl">
+  <!-- Modal: JANコードスキャナー -->
+  <div id="scanModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
       <div class="flex justify-between items-center border-b pb-2">
-        <h3 class="font-bold text-slate-800 text-sm flex items-center"><i class="fa-solid fa-camera mr-2 text-blue-600"></i>JANコードスキャナー</h3>
+        <h3 class="font-bold text-slate-800 text-sm"><i class="fa-solid fa-camera mr-2 text-blue-600"></i>JANバーコードスキャン</h3>
         <button onclick="closeScanModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
-      
-      <div class="relative overflow-hidden bg-black rounded-xl min-h-[220px] flex items-center justify-center">
-        <div id="reader" class="w-full"></div>
-        <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
-          <div class="w-4/5 h-28 border-2 border-dashed border-blue-400 rounded-lg relative overflow-hidden bg-blue-500/10">
-            <div class="scanner-laser"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="text-center space-y-1">
-        <p class="text-xs font-semibold text-slate-700">バーコードを枠内に合わせてください</p>
-      </div>
+      <div id="reader"></div>
+      <div id="scanStatus" class="text-center text-[11px] text-slate-500">カメラ起動準備中…</div>
+      <div class="flex gap-2"><button type="button" onclick="restartScanCamera()" class="flex-1 rounded-lg bg-blue-600 text-white py-2 text-xs font-semibold"><i class="fa-solid fa-camera-rotate mr-1"></i>再読み込み</button><button type="button" onclick="closeScanModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs">閉じる</button></div>
     </div>
   </div>
 
-  <!-- Modal 2: 店舗選択用マップ (zIndex: 90) -->
-  <div id="storeMapModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[90] hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-2xl w-full p-5 space-y-3 shadow-2xl">
-      <div class="flex justify-between items-center border-b pb-2">
-        <h3 class="font-bold text-slate-800 text-sm"><i class="fa-solid fa-map-pin mr-2 text-blue-600"></i>地図から店舗を選択</h3>
-        <button onclick="closeStoreMapModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
-      </div>
-      <div class="flex gap-2">
-        <input type="text" id="modalMapSearchInput" placeholder="店舗名・ランドマーク名で検索" class="flex-1 p-2 border border-slate-300 rounded-lg text-xs bg-slate-50">
-        <button onclick="searchStoreOnModalMap()" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs">検索</button>
-      </div>
-      <div id="modalMap" class="w-full h-80 rounded-lg border border-slate-200"></div>
-      <p class="text-[11px] text-slate-500">※地図上のピンまたは場所をタップすると店舗情報が自動入力されます。</p>
-    </div>
-  </div>
-
-  <!-- Modal 3: 商品登録 / 編集 (zIndex: 50) -->
+  <!-- Modal: 商品登録 / 編集 -->
   <div id="itemModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl my-8 text-xs md:text-sm">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-5 space-y-3 shadow-xl my-6 text-xs md:text-sm">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 id="modalTitle" class="font-bold text-slate-900 text-base">商品を新規登録</h3>
         <button onclick="closeItemModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
@@ -204,92 +183,42 @@
       <form id="itemForm" onsubmit="handleSaveItem(event)" class="space-y-3">
         <input type="hidden" id="editItemId">
 
-        <!-- メーカー / 商品名 -->
-        <div class="grid grid-cols-3 gap-2">
-          <div class="col-span-1">
-            <label class="block font-medium text-slate-700 mb-1">メーカー</label>
-            <input type="text" id="formBrand" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: サントリー">
-          </div>
-          <div class="col-span-2">
-            <label class="block font-medium text-slate-700 mb-1">商品名 <span class="text-red-500">*</span></label>
-            <input type="text" id="formName" required class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: 天然水">
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">商品名 <span class="text-red-500">*</span></label>
+          <div class="flex gap-2">
+            <input type="text" id="formName" required class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: エナジードリンク 250ml">
+            <button type="button" id="apiSearchBtn" onclick="fetchProductByYahooApi()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition shadow-sm">
+              <i class="fa-solid fa-magnifying-glass mr-1"></i>Yahoo!検索
+            </button>
           </div>
         </div>
 
-        <!-- フレーバー・種類 / 内容量 -->
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block font-medium text-slate-700 mb-1">フレーバー・種類</label>
-            <input type="text" id="formFlavor" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: レモン味 / 微糖">
-          </div>
-          <div>
-            <label class="block font-medium text-slate-700 mb-1">内容量</label>
-            <input type="text" id="formVolume" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="例: 500ml / 2L">
-          </div>
-        </div>
-
-        <!-- JANコード & ジャンル -->
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block font-medium text-slate-700 mb-1">JANコード</label>
-            <div class="flex gap-1.5">
-              <input type="text" id="formJan" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="4900000000000">
-              <button type="button" onclick="openModalScan()" class="bg-blue-50 border border-blue-200 text-blue-600 px-3 rounded-lg hover:bg-blue-100 transition shadow-sm" title="カメラでJANスキャン">
-                <i class="fa-solid fa-camera"></i>
-              </button>
-            </div>
+            <input type="text" id="formJan" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="4900000000000">
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">商品ジャンル (税率)</label>
-            <select id="formCategory" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
-              <option value="food">食品・飲料 (軽減税率 8%)</option>
-              <option value="other">日用品・その他 (標準税率 10%)</option>
-            </select>
+            <label class="block font-medium text-slate-700 mb-1">タグ (カンマ区切り)</label>
+            <input type="text" id="formTags" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料, 特売">
           </div>
         </div>
 
-        <!-- タグ -->
-        <div>
-          <label class="block font-medium text-slate-700 mb-1">タグ (「、」やカンマ区切り)</label>
-          <input type="text" id="formTags" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料、 水、 特売">
-          <div id="quickTagSelector" class="flex flex-wrap gap-1 mt-1.5 text-[11px] text-slate-500"></div>
-        </div>
-
-        <!-- 店舗情報・価格 -->
-        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
-          <div class="flex justify-between items-center">
-            <p class="font-bold text-xs text-slate-700"><i class="fa-solid fa-store mr-1 text-blue-600"></i>店舗情報・価格の記録</p>
-            <button type="button" onclick="openStoreMapModal()" class="text-[11px] text-blue-600 hover:underline flex items-center">
-              <i class="fa-solid fa-map-location-dot mr-1"></i>地図から選択
-            </button>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="block text-[10px] text-slate-500 mb-0.5">店舗名</label>
-              <input type="text" id="formStore" placeholder="例: イオン" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            </div>
-            <div>
-              <label class="block text-[10px] text-slate-500 mb-0.5">支店・エリア名</label>
-              <input type="text" id="formBranch" placeholder="例: 豊橋南店" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-2 pt-1">
-            <div>
-              <label class="block text-[10px] text-slate-500 mb-0.5">税抜き価格 (円)</label>
-              <input type="number" id="formPrice" placeholder="例: 98" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            </div>
-            <div>
-              <label class="block text-[10px] text-slate-500 mb-0.5">確認日付</label>
-              <input type="date" id="formDate" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs">
-            </div>
+        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+          <p class="font-bold text-xs text-slate-700"><i class="fa-solid fa-store mr-1 text-blue-600"></i>店舗・日付・価格の記録</p>
+          <div class="grid grid-cols-3 gap-2">
+            <input type="text" id="formStore" placeholder="店舗名 (例: イオン)" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
+            <input type="number" id="formPrice" placeholder="価格 (円)" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
+            <input type="date" id="formDate" class="p-2 border border-slate-300 rounded-lg bg-white text-xs">
           </div>
         </div>
 
         <div>
           <label class="block font-medium text-slate-700 mb-1">備考欄</label>
-          <textarea id="formMemo" rows="2" class="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="特売情報やメモなど"></textarea>
+          <textarea id="formMemo" rows="2" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="特売情報やメモなど"></textarea>
         </div>
 
+        <!-- 登録・編集ボタン / 削除ボタン -->
         <div class="pt-2 flex justify-between items-center">
           <div>
             <button type="button" id="deleteBtn" onclick="handleDeleteItem()" class="hidden px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-medium transition">削除する</button>
@@ -305,6 +234,7 @@
 
   <!-- JavaScript ロジック -->
   <script>
+    // --- Firebase 設定 ---
     const firebaseConfig = {
       apiKey: "AIzaSyAoNZm6KwPQuWbC0W65sOh4soLMx1UoUrQ",
       authDomain: "g-account-6f48b.firebaseapp.com",
@@ -319,58 +249,45 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
+    // --- アプリケーション状態 ---
     let currentUser = null;
     let currentDbType = 'personal';
     let selectedTag = null;
-    let html5QrcodeScanner = null;
     let map = null;
-    let modalMap = null;
-    let mapMarkers = [];
-    let userCurrentCoords = null;
 
-    const defaultInitialItems = [
-      {
-        id: "item_1",
-        brand: "サントリー",
-        name: "天然水",
-        flavor: "",
-        volume: "2L",
-        category: "food",
-        jan: "4901777018686",
-        tags: ["飲料", "水", "定番"],
-        memo: "防災用備蓄品。",
-        stores: [
-          { name: "スギ薬局", branch: "豊橋駅前店", price: 98, date: "2026-10-20" },
-          { name: "イオン", branch: "豊橋南店", price: 108, date: "2026-10-15" }
-        ],
-        dbType: "open"
-      }
-    ];
-
-    const STORAGE_KEY = 'smart_item_db_v4';
-    let localItems = [];
-    
-    function loadItemsFromStorage() {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
-          localItems = JSON.parse(saved);
-        } catch(e) {
-          localItems = defaultInitialItems;
-        }
-      } else {
-        localItems = defaultInitialItems;
-        saveLocalStorage();
+    const sampleItems = [{
+      id: "item_1", name: "サントリー 天然水 2L", jan: "4901777018686",
+      tags: ["飲料", "水", "定番"], memo: "防災用備蓄品。お買い得価格。",
+      stores: [{ name: "スギ薬局", price: 98, date: "2026-10-20" }, { name: "イオン", price: 108, date: "2026-10-15" }], dbType: "open"
+    }];
+    function readLocalJson(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return fallback;
+        const parsed = JSON.parse(raw);
+        return parsed;
+      } catch (err) {
+        console.error('保存データの読み込みに失敗:', key, err);
+        return fallback;
       }
     }
+    let localItems = readLocalJson('smart_item_db', sampleItems);
+    if (!Array.isArray(localItems)) localItems = sampleItems;
+    let appSettings = readLocalJson('smart_item_settings', { yahooId: "", amazonTag: "" }) || { yahooId: "", amazonTag: "" };
+    let scannerActive = false;
+    let scannerStarting = false;
+    let lastScanCode = '';
+    let lastScanCount = 0;
+    let lastScanAt = 0;
 
     document.addEventListener("DOMContentLoaded", () => {
-      loadItemsFromStorage();
       initAuth();
       renderItems();
       renderTags();
+      loadSettingsToForm();
     });
 
+    // --- 認証 ---
     function initAuth() {
       auth.onAuthStateChanged(user => {
         currentUser = user;
@@ -400,13 +317,14 @@
         `;
       } else {
         el.innerHTML = `
-          <button onclick="loginGoogle()" class="bg-slate-900 text-white text-xs px-3.5 py-1.5 rounded-lg hover:bg-slate-800 font-medium transition shadow-sm">
+          <button onclick="loginGoogle()" title="ログインは認証用です。商品データは現在この端末に保存されます。" class="bg-slate-900 text-white text-xs px-3.5 py-1.5 rounded-lg hover:bg-slate-800 font-medium transition shadow-sm">
             <i class="fa-brands fa-google mr-1.5"></i>Googleログイン
           </button>
         `;
       }
     }
 
+    // --- DB切り替え & タブ ---
     function setDbType(type) {
       currentDbType = type;
       const btnP = document.getElementById('dbTypePersonal');
@@ -430,16 +348,14 @@
       document.getElementById(`view-${tab}`).classList.remove('hidden');
       document.getElementById(`tab-${tab}`).className = "py-2.5 nav-active whitespace-nowrap";
 
-      if (tab === 'map') {
-        if (!map) {
-          initMap();
-        } else {
-          map.invalidateSize();
-          updateMapMarkers();
-        }
+      if (tab === 'map' && !map) {
+        initMap();
+      } else if (tab === 'map' && map) {
+        setTimeout(() => map.invalidateSize(), 100);
       }
     }
 
+    // --- 商品表示ロジック ---
     function renderItems() {
       const container = document.getElementById('itemList');
       const search = document.getElementById('searchInput').value.toLowerCase();
@@ -448,12 +364,10 @@
         if (item.dbType !== currentDbType) return false;
         if (selectedTag && (!item.tags || !item.tags.includes(selectedTag))) return false;
         if (search) {
-          const matchBrand = (item.brand || '').toLowerCase().includes(search);
           const matchName = item.name.toLowerCase().includes(search);
-          const matchFlavor = (item.flavor || '').toLowerCase().includes(search);
           const matchJan = item.jan && item.jan.includes(search);
-          const matchStore = item.stores && item.stores.some(s => (s.name + (s.branch || '')).toLowerCase().includes(search));
-          return matchBrand || matchName || matchFlavor || matchJan || matchStore;
+          const matchStore = item.stores && item.stores.some(s => s.name.toLowerCase().includes(search));
+          return matchName || matchJan || matchStore;
         }
         return true;
       });
@@ -478,37 +392,17 @@
           `<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-medium">#${t}</span>`
         ).join(" ");
 
-        const taxRate = (item.category === 'food' || !item.category) ? 0.08 : 0.10;
-        let priceNoTaxStr = '-';
-        let priceWithTaxStr = '';
-
-        if (lowestStore && lowestStore.price) {
-          const priceNoTax = Number(lowestStore.price);
-          const priceWithTax = Math.floor(priceNoTax * (1 + taxRate));
-          priceNoTaxStr = `¥${priceNoTax.toLocaleString()}`;
-          priceWithTaxStr = `<span class="text-[11px] text-slate-500 font-normal ml-1">(税込 ¥${priceWithTax.toLocaleString()})</span>`;
-        }
-
-        const fullTitle = `${item.brand ? item.brand + ' ' : ''}${item.name}${item.flavor ? ' ' + item.flavor : ''}${item.volume ? ' ' + item.volume : ''}`;
-        const q = encodeURIComponent(item.jan || fullTitle);
-        const amazonUrl = `https://www.amazon.co.jp/s?k=${q}`;
+        const q = encodeURIComponent(item.jan || item.name);
+        const amzTag = appSettings.amazonTag ? `&tag=${appSettings.amazonTag}` : '';
+        const amazonUrl = `https://www.amazon.co.jp/s?k=${q}${amzTag}`;
         const rakutenUrl = `https://search.rakuten.co.jp/search/mall/${q}/`;
         const yahooUrl = `https://shopping.yahoo.co.jp/search?p=${q}`;
-
-        const storeFullName = lowestStore ? `${lowestStore.name} ${lowestStore.branch || ''}` : '未記録';
 
         return `
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 flex flex-col justify-between space-y-3">
             <div>
               <div class="flex justify-between items-start mb-1">
-                <div>
-                  ${item.brand ? `<p class="text-[10px] font-semibold text-blue-600 uppercase tracking-wider">${item.brand}</p>` : ''}
-                  <h3 class="font-bold text-slate-900 text-sm leading-snug">
-                    ${item.name} 
-                    ${item.flavor ? `<span class="text-xs font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded ml-1">${item.flavor}</span>` : ''}
-                    ${item.volume ? `<span class="text-xs font-normal text-slate-500 ml-1">(${item.volume})</span>` : ''}
-                  </h3>
-                </div>
+                <h3 class="font-bold text-slate-900 text-sm leading-snug">${item.name}</h3>
                 <button onclick="editItem('${item.id}')" class="text-slate-400 hover:text-blue-600 text-xs p-1" title="編集・削除">
                   <i class="fa-solid fa-pen"></i>
                 </button>
@@ -516,30 +410,28 @@
               <p class="text-[11px] text-slate-400 font-mono mb-2">JAN: ${item.jan || '未設定'}</p>
               <div class="flex flex-wrap gap-1 mb-3">${tagBadges}</div>
 
+              <!-- 実店舗最安値ボックス -->
               <div class="bg-blue-50/60 rounded-lg p-2.5 border border-blue-100 text-xs space-y-1">
                 <div class="flex justify-between text-slate-500 text-[11px]">
-                  <span>店舗最安値 <span class="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">${taxRate === 0.08 ? '8%対象' : '10%対象'}</span></span>
+                  <span>店舗最安値</span>
                   <span>${lowestStore ? lowestStore.date : '-'}</span>
                 </div>
                 <div class="flex justify-between items-baseline">
-                  <span class="font-bold text-slate-800 text-xs">${storeFullName}</span>
-                  <div>
-                    <span class="text-blue-700 font-extrabold text-base">${priceNoTaxStr}</span>
-                    <span class="text-[10px] text-slate-500 font-medium"> +税</span>
-                    ${priceWithTaxStr}
-                  </div>
+                  <span class="font-bold text-slate-800 text-xs">${lowestStore ? lowestStore.name : '未記録'}</span>
+                  <span class="text-blue-700 font-extrabold text-base">${lowestStore ? '¥' + Number(lowestStore.price).toLocaleString() : '-'}</span>
                 </div>
               </div>
 
               ${item.memo ? `<p class="text-[11px] text-slate-500 mt-2 bg-slate-50 p-2 rounded border border-slate-100">${item.memo}</p>` : ''}
             </div>
 
+            <!-- ECサイト検索・アフィリエイトボタン -->
             <div class="pt-2 border-t border-slate-100">
               <p class="text-[10px] text-slate-400 font-medium mb-1.5">EC最安値・購入リンク</p>
               <div class="grid grid-cols-3 gap-1.5 text-center text-[11px]">
-                <a href="${amazonUrl}" target="_blank" class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 py-1.5 rounded font-medium transition">Amazon</a>
-                <a href="${rakutenUrl}" target="_blank" class="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 py-1.5 rounded font-medium transition">楽天</a>
-                <a href="${yahooUrl}" target="_blank" class="bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 py-1.5 rounded font-medium transition">Yahoo!</a>
+                <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer" class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 py-1.5 rounded font-medium transition">Amazon</a>
+                <a href="${rakutenUrl}" target="_blank" rel="noopener noreferrer" class="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 py-1.5 rounded font-medium transition">楽天</a>
+                <a href="${yahooUrl}" target="_blank" rel="noopener noreferrer" class="bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 py-1.5 rounded font-medium transition">Yahoo!</a>
               </div>
             </div>
           </div>
@@ -547,6 +439,7 @@
       }).join('');
     }
 
+    // --- タグ操作 ---
     function renderTags() {
       const allTags = new Set();
       localItems.forEach(i => (i.tags || []).forEach(t => allTags.add(t)));
@@ -557,13 +450,6 @@
           #${tag}
         </button>
       `).join('');
-
-      const quickContainer = document.getElementById('quickTagSelector');
-      if (quickContainer) {
-        quickContainer.innerHTML = '候補: ' + Array.from(allTags).map(tag => `
-          <span onclick="addTagToForm('${tag}')" class="cursor-pointer bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200">#${tag}</span>
-        `).join(' ');
-      }
     }
 
     function toggleTag(tag) {
@@ -576,75 +462,185 @@
       renderItems();
     }
 
-    function addTagToForm(tag) {
-      const input = document.getElementById('formTags');
-      let currentVal = input.value.trim();
-      if (currentVal) {
-        if (!currentVal.includes(tag)) {
-          input.value = `${currentVal}、${tag}`;
-        }
-      } else {
-        input.value = tag;
+    // --- JANコードカメラ読み取り（JAN Master ProのQuagga2方式） ---
+    function openScanModal() {
+      document.getElementById('scanModal').classList.remove('hidden');
+      startScanCamera();
+    }
+
+    async function startScanCamera() {
+      if (scannerActive || scannerStarting) return;
+      scannerStarting = true;
+      const status = document.getElementById('scanStatus');
+      status.textContent = 'カメラを起動しています…';
+      const reader = document.getElementById('reader');
+      reader.innerHTML = '';
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        scannerStarting = false;
+        status.textContent = 'カメラを利用できません。HTTPSで開いているか確認してください。';
+        return;
+      }
+      if (!window.Quagga || typeof Quagga.init !== 'function') {
+        scannerStarting = false;
+        status.textContent = 'バーコード読取ライブラリを読み込めませんでした。';
+        return;
+      }
+      try {
+        try { Quagga.offDetected(onScanDetected); Quagga.stop(); } catch (_) {}
+        Quagga.init({
+          inputStream: { name: 'Live', type: 'LiveStream', target: reader, constraints: { facingMode: 'environment', width: { ideal: 1600 }, height: { ideal: 900 } } },
+          locator: { patchSize: 'medium', halfSample: true },
+          numOfWorkers: navigator.hardwareConcurrency ? Math.min(4, navigator.hardwareConcurrency) : 2,
+          frequency: 10,
+          decoder: { readers: ['ean_reader', 'ean_8_reader', 'i2of5_reader', 'upc_reader'] },
+          locate: true
+        }, err => {
+          scannerStarting = false;
+          if (err) {
+            console.error('Quagga init error:', err);
+            status.textContent = 'カメラを起動できませんでした。カメラ権限とHTTPSを確認してください。';
+            return;
+          }
+          try {
+            Quagga.offDetected(onScanDetected);
+            Quagga.onDetected(onScanDetected);
+            Quagga.start();
+            scannerActive = true;
+            scannerStarting = false;
+            status.textContent = 'バーコードを枠内に合わせてください。読み取り確定後にカメラは自動停止します。';
+            const track = Quagga.CameraAccess && Quagga.CameraAccess.getActiveTrack ? Quagga.CameraAccess.getActiveTrack() : null;
+            if (track && track.applyConstraints) {
+              const caps = track.getCapabilities ? track.getCapabilities() : {};
+              if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+            }
+          } catch (err2) {
+            console.error('Quagga start error:', err2);
+            scannerStarting = false;
+            stopScanCamera();
+            status.textContent = 'カメラ開始に失敗しました。再読み込みをお試しください。';
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        scannerStarting = false;
+        status.textContent = 'カメラ設定でエラーが発生しました。';
       }
     }
 
-    // --- 【超高安定カメラ機能】標準仕様の自動起動 ---
-    function openScanModal() {
-      document.getElementById('scanModal').classList.remove('hidden');
-      
-      const config = {
-        fps: 25,
-        qrbox: { width: 280, height: 120 },
-        aspectRatio: 1.333333,
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128
-        ]
-      };
+    function validJanOrItf(code) {
+      const value = String(code || '').replace(/\D/g, '');
+      if (!/^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/.test(value)) return false;
+      const body = value.slice(0, -1).split('').reverse();
+      let sum = 0;
+      body.forEach((digit, index) => sum += Number(digit) * (index % 2 === 0 ? 3 : 1));
+      return (10 - (sum % 10)) % 10 === Number(value.slice(-1));
+    }
 
-      html5QrcodeScanner = new Html5Qrcode("reader");
-      
-      // スマホ（iOS/Android）の標準バックカメラ呼び出し
-      html5QrcodeScanner.start(
-        { facingMode: "environment" }, 
-        config,
-        (decodedText) => {
-          closeScanModal();
-          openItemModalWithJan(decodedText);
-        },
-        (errorMessage) => {}
-      ).catch(err => {
-        console.error("Camera start error:", err);
-        alert("カメラを起動できませんでした。ブラウザのカメラ権限が「許可」されているかご確認ください。");
-        closeScanModal();
-      });
+    function onScanDetected(result) {
+      if (!scannerActive) return;
+      const raw = result && result.codeResult && result.codeResult.code;
+      const code = String(raw || '').replace(/\D/g, '');
+      if (!validJanOrItf(code)) return;
+      const now = Date.now();
+      if (code === lastScanCode && now - lastScanAt < 2200) lastScanCount++;
+      else { lastScanCode = code; lastScanCount = 1; }
+      lastScanAt = now;
+      if (lastScanCount < 2) return;
+      lastScanCount = 0;
+      stopScanCamera();
+      document.getElementById('scanStatus').textContent = '読み取り成功：' + code;
+      openItemModalWithJan(code);
+    }
+
+    function stopScanCamera() {
+      scannerActive = false;
+      scannerStarting = false;
+      try { if (window.Quagga) { Quagga.offDetected(onScanDetected); Quagga.stop(); } } catch (err) { console.debug('scanner cleanup', err); }
+      const reader = document.getElementById('reader');
+      if (reader) reader.querySelectorAll('video').forEach(v => { try { const stream = v.srcObject; if (stream) stream.getTracks().forEach(t => t.stop()); } catch (_) {} });
+    }
+
+    function restartScanCamera() {
+      stopScanCamera();
+      lastScanCode = ''; lastScanCount = 0; lastScanAt = 0;
+      startScanCamera();
     }
 
     function closeScanModal() {
-      if (html5QrcodeScanner) {
-        html5QrcodeScanner.stop().then(() => html5QrcodeScanner.clear()).catch(() => {});
-      }
+      stopScanCamera();
       document.getElementById('scanModal').classList.add('hidden');
-    }
-
-    function openModalScan() {
-      openScanModal();
     }
 
     function openItemModalWithJan(jan) {
       openItemModal();
       document.getElementById('formJan').value = jan;
+      // 読取直後の外部検索は自動実行せず、商品登録を優先。必要ならYahoo!検索を押す。
+      document.getElementById('formName').focus();
     }
 
+    // --- Yahoo! API呼び出し (HTML単体でCORS回避プロキシ経由) ---
+    async function fetchProductByYahooApi(searchQuery = "") {
+      const clientId = appSettings.yahooId;
+      const jan = searchQuery || document.getElementById('formJan').value;
+      const name = document.getElementById('formName').value;
+      const query = jan || name;
+
+      if (!query) {
+        alert("商品名またはJANコードを入力してください");
+        return;
+      }
+
+      if (!clientId) {
+        alert("Yahoo! APIの Client ID が設定されていません。「API・EC設定」タブから登録してください。");
+        return;
+      }
+
+      const btn = document.getElementById('apiSearchBtn');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>検索中...`;
+
+      try {
+        // JANらしい入力はJAN専用パラメータで検索し、ショップ独自の商品コードをJANと誤認しない。
+        const params = new URLSearchParams({ appid: clientId, results: '10' });
+        if (/^\d{8}$|^\d{12,14}$/.test(query)) params.set('jan_code', query);
+        else params.set('query', query);
+        const targetUrl = `https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch?${params.toString()}`;
+        // 暫定プロキシ。公開運用ではAPIキーをサーバー側に置いた自前の中継処理を推奨。
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+        const res = await fetch(proxyUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const hits = Array.isArray(data.hits) ? data.hits : [];
+        const item = hits.find(hit => !/^\d{8}$|^\d{12,14}$/.test(query) || String(hit.janCode || '') === query) || hits[0];
+
+        if (item) {
+          document.getElementById('formName').value = item.name || document.getElementById('formName').value;
+          // APIの code はショップの商品コードなので、janCodeがある場合だけJAN欄を更新する。
+          if (item.janCode) document.getElementById('formJan').value = item.janCode;
+          if (item.price !== undefined && item.price !== null) {
+            document.getElementById('formPrice').value = item.price;
+            document.getElementById('formStore').value = (item.seller && item.seller.name) ? item.seller.name : 'Yahoo!ショッピング';
+          }
+          alert(`Yahoo!ショッピングから商品情報を取得しました。\n価格: ¥${Number(item.price || 0).toLocaleString()}\n※商品・JANの一致を確認してから保存してください。`);
+        } else {
+          alert('該当する商品が見つかりませんでした。');
+        }
+      } catch (e) {
+        console.error('API呼び出しエラー', e);
+        alert('API検索に失敗しました。Client ID、APIの利用条件、通信状態を確認してください。');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-magnifying-glass mr-1"></i>Yahoo!検索`;
+      }
+    }
+
+    // --- モーダル・商品保存・削除 ---
     function openItemModal() {
       document.getElementById('itemForm').reset();
       document.getElementById('editItemId').value = '';
       document.getElementById('modalTitle').textContent = '商品を新規登録';
       document.getElementById('deleteBtn').classList.add('hidden');
-      renderTags();
       document.getElementById('itemModal').classList.remove('hidden');
     }
 
@@ -653,23 +649,18 @@
       if (!item) return;
 
       document.getElementById('editItemId').value = item.id;
-      document.getElementById('formBrand').value = item.brand || '';
-      document.getElementById('formName').value = item.name || '';
-      document.getElementById('formFlavor').value = item.flavor || '';
-      document.getElementById('formVolume').value = item.volume || '';
-      document.getElementById('formCategory').value = item.category || 'food';
+      document.getElementById('formName').value = item.name;
       document.getElementById('formJan').value = item.jan || '';
-      document.getElementById('formTags').value = (item.tags || []).join('、');
+      document.getElementById('formTags').value = (item.tags || []).join(', ');
       document.getElementById('formMemo').value = item.memo || '';
       if (item.stores && item.stores.length > 0) {
-        document.getElementById('formStore').value = item.stores[0].name || '';
-        document.getElementById('formBranch').value = item.stores[0].branch || '';
-        document.getElementById('formPrice').value = item.stores[0].price || '';
-        document.getElementById('formDate').value = item.stores[0].date || '';
+        const latestStore = [...item.stores].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
+        document.getElementById('formStore').value = latestStore.name;
+        document.getElementById('formPrice').value = latestStore.price;
+        document.getElementById('formDate').value = latestStore.date || '';
       }
       document.getElementById('modalTitle').textContent = '商品を編集';
       document.getElementById('deleteBtn').classList.remove('hidden');
-      renderTags();
       document.getElementById('itemModal').classList.remove('hidden');
     }
 
@@ -680,40 +671,34 @@
     function handleSaveItem(e) {
       e.preventDefault();
       const id = document.getElementById('editItemId').value || 'item_' + Date.now();
-      const brand = document.getElementById('formBrand').value;
       const name = document.getElementById('formName').value;
-      const flavor = document.getElementById('formFlavor').value;
-      const volume = document.getElementById('formVolume').value;
-      const category = document.getElementById('formCategory').value;
       const jan = document.getElementById('formJan').value;
       const tagsStr = document.getElementById('formTags').value;
       const storeName = document.getElementById('formStore').value;
-      const storeBranch = document.getElementById('formBranch').value;
       const price = document.getElementById('formPrice').value;
-      const date = document.getElementById('formDate').value || new Date().toISOString().split('T')[0];
+      const date = document.getElementById('formDate').value || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
       const memo = document.getElementById('formMemo').value;
 
-      const tags = tagsStr ? tagsStr.split(/[,、]/).map(t => t.trim()).filter(Boolean) : [];
-      
-      let stores = [];
-      if (storeName && price) {
-        stores.push({ name: storeName, branch: storeBranch, price: Number(price), date });
-      }
-
-      const newItem = { id, brand, name, flavor, volume, category, jan, tags, memo, stores, dbType: currentDbType };
-
+      const tags = tagsStr ? [...new Set(tagsStr.split(',').map(t => t.trim()).filter(Boolean))] : [];
       const idx = localItems.findIndex(i => i.id === id);
-      if (idx >= 0) {
-        localItems[idx] = newItem;
-      } else {
-        localItems.unshift(newItem);
+      const existing = idx >= 0 ? localItems[idx] : null;
+      // 編集時は過去の店舗価格を保持。入力された店舗だけを追加・更新する。
+      const stores = existing && Array.isArray(existing.stores) ? [...existing.stores] : [];
+      if (storeName.trim() && price !== '' && Number.isFinite(Number(price)) && Number(price) >= 0) {
+        const normalizedName = storeName.trim();
+        const storeIdx = stores.findIndex(st => String(st.name).trim().toLowerCase() === normalizedName.toLowerCase() && String(st.date || '') === date);
+        const record = { name: normalizedName, price: Number(price), date };
+        if (storeIdx >= 0) stores[storeIdx] = record;
+        else stores.push(record);
       }
+      const newItem = { id, name: name.trim(), jan: jan.trim(), tags, memo: memo.trim(), stores, dbType: existing ? existing.dbType : currentDbType, updatedAt: new Date().toISOString() };
+      if (idx >= 0) localItems[idx] = newItem;
+      else localItems.unshift(newItem);
 
-      saveLocalStorage();
+      if (!saveLocalStorage()) return;
       closeItemModal();
       renderTags();
       renderItems();
-      if (map) updateMapMarkers();
     }
 
     function handleDeleteItem() {
@@ -722,154 +707,98 @@
 
       if (confirm("この商品をデータベースから削除してもよろしいですか？")) {
         localItems = localItems.filter(i => i.id !== id);
-        saveLocalStorage();
+        if (!saveLocalStorage()) return;
         closeItemModal();
         renderTags();
         renderItems();
-        if (map) updateMapMarkers();
       }
     }
 
+    // --- DBマージ ---
     function triggerMerge() {
-      alert("個人DBとオープンDB間で、同一JANコードを持つ商品の店舗価格情報を自動マージしました。");
-      renderItems();
+      const personal = localItems.filter(i => i.dbType === 'personal');
+      const open = localItems.filter(i => i.dbType === 'open');
+      if (!open.length) { alert('マージ対象のオープンDB商品がありません。'); return; }
+      if (!confirm('オープンDBの商品情報を個人DBに取り込みます。同じJANの商品は店舗価格・タグを統合し、個人のメモは保持します。続行しますか？')) return;
+      let added = 0, merged = 0;
+      open.forEach(source => {
+        const target = source.jan ? localItems.find(i => i.dbType === 'personal' && i.jan && i.jan === source.jan) : null;
+        if (!target) {
+          const copy = JSON.parse(JSON.stringify(source));
+          copy.id = 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+          copy.dbType = 'personal'; copy.importedFrom = source.id;
+          localItems.unshift(copy); added++;
+        } else {
+          const stores = Array.isArray(target.stores) ? [...target.stores] : [];
+          (source.stores || []).forEach(st => {
+            const duplicate = stores.some(x => String(x.name).trim().toLowerCase() === String(st.name).trim().toLowerCase() && String(x.date || '') === String(st.date || '') && Number(x.price) === Number(st.price));
+            if (!duplicate) stores.push({ ...st });
+          });
+          target.stores = stores;
+          target.tags = [...new Set([...(target.tags || []), ...(source.tags || [])])];
+          if (!target.name && source.name) target.name = source.name;
+          target.updatedAt = new Date().toISOString();
+          merged++;
+        }
+      });
+      if (!saveLocalStorage()) return;
+      renderTags(); renderItems();
+      alert(`マージ完了：新規取り込み ${added} 件、既存商品の統合 ${merged} 件。\n元のオープンDB商品は削除していません。`);
     }
 
-    // --- 店舗マップ機能 ＆ モーダルマップ連携 ---
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+
+    // --- 店舗マップ (Leaflet) ---
     function initMap() {
-      map = L.map('map', { zoomControl: true, attributionControl: true }).setView([34.769, 137.391], 13);
+      map = L.map('map').setView([34.769, 137.391], 13);
+
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
         attribution: '© OpenStreetMap contributors'
       }).addTo(map);
 
-      updateMapMarkers();
-    }
-
-    function updateMapMarkers() {
-      if (!map) return;
-      mapMarkers.forEach(m => map.removeLayer(m));
-      mapMarkers = [];
-
-      const storeMap = new Map();
-      localItems.forEach(item => {
-        if (item.stores) {
-          item.stores.forEach(s => {
-            if (s.name) {
-              const fullStoreName = `${s.name} ${s.branch || ''}`.trim();
-              if (!storeMap.has(fullStoreName)) {
-                storeMap.set(fullStoreName, []);
-              }
-              storeMap.set(fullStoreName, storeMap.get(fullStoreName).concat(`${item.name} (¥${s.price}+税)`));
-            }
-          });
-        }
-      });
-
-      storeMap.forEach((itemsList, fullStoreName) => {
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullStoreName)}`)
-          .then(res => res.json())
-          .then(data => {
-            if (data && data.length > 0) {
-              const lat = parseFloat(data[0].lat);
-              const lon = parseFloat(data[0].lon);
-              const marker = L.marker([lat, lon]).addTo(map)
-                .bindPopup(`<b>${fullStoreName}</b><br><hr class="my-1"><span class="text-[11px]">${itemsList.join('<br>')}</span>`);
-              mapMarkers.push(marker);
-            }
-          })
-          .catch(err => console.error("Map pin error:", err));
-      });
-    }
-
-    async function searchStoreOnMap() {
-      const query = document.getElementById('mapSearchInput').value.trim();
-      if (!query) return alert("検索する店舗名や地域名を入力してください");
-
-      let searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-      if (userCurrentCoords) {
-        const lat = userCurrentCoords.lat, lon = userCurrentCoords.lng;
-        searchUrl += `&viewbox=${lon-0.1},${lat+0.1},${lon+0.1},${lat-0.1}&bounded=1`;
-      }
-
-      try {
-        const res = await fetch(searchUrl);
-        const data = await res.json();
-        if (data && data.length > 0) {
-          const lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
-          map.setView([lat, lon], 15);
-          const marker = L.marker([lat, lon]).addTo(map).bindPopup(`<b>${query}</b>`).openPopup();
-          mapMarkers.push(marker);
-        } else {
-          alert("該当する場所が見つかりませんでした。");
-        }
-      } catch (e) {
-        alert("地図の検索中にエラーが発生しました。");
-      }
-    }
-
-    function openStoreMapModal() {
-      document.getElementById('storeMapModal').classList.remove('hidden');
-      if (!modalMap) {
-        modalMap = L.map('modalMap').setView([34.769, 137.391], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(modalMap);
-        
-        modalMap.on('click', async (e) => {
-          const lat = e.latlng.lat;
-          const lon = e.latlng.lng;
-          try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-            const data = await res.json();
-            if (data && data.display_name) {
-              const nameParts = data.display_name.split(',');
-              document.getElementById('formStore').value = nameParts[0] || '';
-              document.getElementById('formBranch').value = nameParts[1] || '';
-              closeStoreMapModal();
-            }
-          } catch(err) {}
-        });
-      } else {
-        modalMap.invalidateSize();
-      }
-    }
-
-    function closeStoreMapModal() {
-      document.getElementById('storeMapModal').classList.add('hidden');
-    }
-
-    async function searchStoreOnModalMap() {
-      const q = document.getElementById('modalMapSearchInput').value.trim();
-      if (!q) return;
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        if (data && data.length > 0) {
-          const lat = parseFloat(data[0].lat), lon = parseFloat(data[0].lon);
-          modalMap.setView([lat, lon], 15);
-          L.marker([lat, lon]).addTo(modalMap).bindPopup(`<b>${q}</b><br><button onclick="selectModalStore('${q}')" class="text-xs bg-blue-600 text-white px-2 py-1 rounded mt-1">この店舗を選択</button>`).openPopup();
-        }
-      } catch(e) {}
-    }
-
-    function selectModalStore(name) {
-      document.getElementById('formStore').value = name;
-      closeStoreMapModal();
+      const known = localItems.flatMap(item => (item.stores || []).filter(st => Number.isFinite(Number(st.lat)) && Number.isFinite(Number(st.lng))).map(st => ({ ...st, itemName: item.name })));
+      known.forEach(st => L.marker([Number(st.lat), Number(st.lng)]).addTo(map).bindPopup(`<b>${escapeHtml(st.name)}</b><br>${escapeHtml(st.itemName)} ¥${Number(st.price).toLocaleString()}`));
+      if (!known.length) { const note = L.control({ position: 'bottomleft' }); note.onAdd = function() { const div = L.DomUtil.create('div', 'bg-white px-3 py-2 rounded shadow text-xs'); div.textContent = '店舗の位置情報は未登録です。現在地表示は利用できます。'; return div; }; note.addTo(map); }
     }
 
     function locateUser() {
       if (navigator.geolocation && map) {
         navigator.geolocation.getCurrentPosition(pos => {
-          const lat = pos.coords.latitude, lng = pos.coords.longitude;
-          userCurrentCoords = { lat, lng };
-          map.setView([lat, lng], 16);
-          L.marker([lat, lng]).addTo(map).bindPopup('<b>現在地</b>').openPopup();
-          alert("現在地を取得しました。");
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          map.setView([lat, lng], 15);
+          L.marker([lat, lng]).addTo(map).bindPopup('現在地').openPopup();
         });
       }
     }
 
+    // --- 設定保存 ---
+    function saveSettings() {
+      appSettings.yahooId = document.getElementById('settingYahooId').value.trim();
+      appSettings.amazonTag = document.getElementById('settingAmazonTag').value.trim();
+      try {
+        localStorage.setItem('smart_item_settings', JSON.stringify(appSettings));
+        alert('設定をこの端末に保存しました。別端末への同期はまだ行いません。');
+      } catch (err) {
+        console.error('設定保存失敗:', err);
+        alert('設定を保存できませんでした。ブラウザの保存容量やプライベートブラウズ設定を確認してください。');
+      }
+    }
+
+    function loadSettingsToForm() {
+      document.getElementById('settingYahooId').value = appSettings.yahooId || "";
+      document.getElementById('settingAmazonTag').value = appSettings.amazonTag || "";
+    }
+
     function saveLocalStorage() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(localItems));
+      try {
+        localStorage.setItem('smart_item_db', JSON.stringify(localItems));
+        return true;
+      } catch (err) {
+        console.error('商品データ保存失敗:', err);
+        alert('データを保存できませんでした。ブラウザの保存容量やプライベートブラウズ設定を確認してください。入力内容は画面に残しています。');
+        return false;
+      }
     }
   </script>
 </body>
