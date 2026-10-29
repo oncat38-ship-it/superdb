@@ -168,7 +168,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block font-medium text-slate-700 mb-1">JANコード</label>
-            <input type="text" id="formJan" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="4900000000000">
+            <div class="flex gap-1"><input type="text" id="formJan" class="min-w-0 flex-1 p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="4900000000000"><button type="button" onclick="openJanFieldScanModal()" title="カメラでJANを読み取る" aria-label="カメラでJANを読み取る" class="shrink-0 px-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700"><i class="fa-solid fa-camera"></i></button></div>
           </div>
           <div>
             <label class="block font-medium text-slate-700 mb-1">タグ（「,」または「、」で区切り）</label>
@@ -207,6 +207,15 @@
     </div>
   </div>
 
+  <!-- Modal: 商品詳細（閲覧専用） -->
+  <div id="detailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-5 space-y-4 shadow-xl my-6">
+      <div class="flex justify-between items-center border-b pb-3"><h3 class="font-bold text-slate-900 text-base">商品詳細</h3><button type="button" onclick="closeDetailModal()" class="text-slate-400"><i class="fa-solid fa-xmark text-lg"></i></button></div>
+      <div id="detailContent" class="space-y-4"></div>
+      <div class="flex justify-between gap-2 pt-2 border-t"><button type="button" onclick="closeDetailModal()" class="px-4 py-2 border rounded-lg text-slate-600">閉じる</button><button type="button" id="detailEditButton" onclick="editItemFromDetail()" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold"><i class="fa-solid fa-pen mr-1"></i>編集画面へ</button></div>
+    </div>
+  </div>
+
   <!-- JavaScript ロジック -->
   <script>
     // --- Firebase 設定 ---
@@ -233,11 +242,7 @@
     let cloudSaveQueue = Promise.resolve();
     let legacyItemsForMigration = [];
 
-    const sampleItems = [{
-      id: "item_1", name: "サントリー 天然水 2L", jan: "4901777018686",
-      tags: ["飲料", "水", "定番"], memo: "防災用備蓄品。お買い得価格。",
-      stores: [{ name: "スギ薬局", price: 98, date: "2026-10-20" }, { name: "イオン", price: 108, date: "2026-10-15" }], dbType: "open"
-    }];
+    const sampleItems = [];
     function readLocalJson(key, fallback) {
       try {
         const raw = localStorage.getItem(key);
@@ -249,8 +254,10 @@
         return fallback;
       }
     }
-    legacyItemsForMigration = readLocalJson('smart_item_db', sampleItems);
-    if (!Array.isArray(legacyItemsForMigration)) legacyItemsForMigration = sampleItems;
+    legacyItemsForMigration = readLocalJson('smart_item_db', []);
+    if (!Array.isArray(legacyItemsForMigration)) legacyItemsForMigration = [];
+    // 旧版に同梱していた見本商品だけを除去し、ユーザーが登録した商品は保持する。
+    legacyItemsForMigration = legacyItemsForMigration.filter(i => !(i && i.id === 'item_1' && i.jan === '4901777018686' && String(i.name || '').includes('天然水')));
     // 旧バージョンの個人データを初回ログインまで保護するため、移行候補を別キーに退避。
     try {
       if (localStorage.getItem('smart_item_db_legacy_personal') === null) {
@@ -260,7 +267,6 @@
     } catch (e) { console.warn('旧個人データの移行バックアップに失敗:', e); }
     // 個人データはログイン後にアカウント別Firestoreから読み込む。未ログイン時はオープンDBのみ表示。
     let localItems = legacyItemsForMigration.filter(i => i && i.dbType === 'open');
-    if (!localItems.length && !legacyItemsForMigration.length) localItems = sampleItems;
     let appSettings = readLocalJson('smart_item_settings', { yahooId: "", amazonTag: "" }) || { yahooId: "", amazonTag: "" };
     let scannerActive = false;
     let scannerStarting = false;
@@ -288,7 +294,6 @@
           await loadAccountItems(user);
         } else {
           localItems = legacyItemsForMigration.filter(i => i && i.dbType === 'open');
-          if (!localItems.length) localItems = sampleItems;
           updateStorageStatus('ログインすると個人データを同期', 'text-amber-600');
           renderTags(); renderItems();
         }
@@ -492,11 +497,44 @@
               <div class="text-[10px] text-slate-500 font-mono pt-0.5">JAN: ${jan}</div>
             </div>
             <div class="flex flex-col gap-1 shrink-0">
-              <button type="button" onclick="editItem('${safeId}')" class="px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>詳細</button>
+              <button type="button" onclick="showItemDetails('${safeId}')" class="px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>詳細</button>
               ${item.jan ? `<button type="button" onclick="copyJan('${String(item.jan).replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-md border border-slate-200 text-slate-500 text-[10px]"><i class="fa-regular fa-copy mr-1"></i>JAN</button>` : ''}
             </div>
           </article>`;
       }).join('');
+    }
+
+    let detailItemId = null;
+    function showItemDetails(id) {
+      const item = localItems.find(i => String(i.id) === String(id));
+      if (!item) return;
+      detailItemId = item.id;
+      const taxRate = item.taxType === 'other' ? 0.10 : 0.08;
+      const stores = Array.isArray(item.stores) ? [...item.stores].sort((a,b) => String(b.date||'').localeCompare(String(a.date||''))) : [];
+      const priceHistory = stores.length ? stores.map(st => {
+        const price = st.price !== '' && st.price != null && Number.isFinite(Number(st.price)) ? Number(st.price) : null;
+        const taxType = st.taxType || item.taxType || 'food';
+        const rate = taxType === 'other' ? 0.10 : 0.08;
+        return `<div class="flex justify-between gap-3 border-b border-slate-100 py-2 text-xs"><div class="min-w-0"><div class="font-semibold text-slate-800">${escapeHtml([st.name, st.branch].filter(Boolean).join(' / ') || '店舗未設定')}</div><div class="text-slate-500">${escapeHtml(st.date || '日付未登録')} · ${taxType === 'other' ? '10%' : '8%'}</div></div><div class="text-right shrink-0">${price === null ? '価格未登録' : `<div class="font-bold">税抜 ¥${price.toLocaleString('ja-JP')}</div><div class="text-[10px] text-slate-500">税込 ¥${Math.round(price*(1+rate)).toLocaleString('ja-JP')}</div>`}</div></div>`;
+      }).join('') : '<p class="text-xs text-slate-400 py-2">価格の記録はまだありません。</p>';
+      const query = item.jan || [item.maker,item.name,item.flavor,item.content].filter(Boolean).join(' ');
+      const q = encodeURIComponent(query);
+      const janText = item.jan ? escapeHtml(item.jan) : '未登録';
+      const tags = (item.tags || []).length ? item.tags.map(t => `<span class="px-2 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px]">${escapeHtml(t)}</span>`).join('') : '<span class="text-xs text-slate-400">タグなし</span>';
+      document.getElementById('detailContent').innerHTML = `
+        <section class="space-y-1"><p class="text-[11px] text-slate-500">${escapeHtml(item.maker || 'メーカー未登録')}</p><div class="flex items-start gap-2"><h2 class="text-lg font-bold text-slate-900 flex-1">${escapeHtml(item.name || '名称未設定')}</h2><span class="text-xs text-slate-500 whitespace-nowrap">${escapeHtml(item.content || '')}</span></div>${item.flavor ? `<p class="text-sm text-slate-600">${escapeHtml(item.flavor)}</p>` : ''}<p class="text-xs font-mono text-slate-500">JAN：${janText}</p><div class="flex flex-wrap gap-1 pt-1">${tags}</div>${item.memo ? `<p class="text-sm whitespace-pre-wrap bg-slate-50 rounded-lg p-3">${escapeHtml(item.memo)}</p>` : ''}</section>
+        <section class="space-y-2"><h4 class="font-bold text-sm text-slate-800"><i class="fa-solid fa-clock-rotate-left mr-1 text-blue-600"></i>登録された過去の価格データ</h4><div>${priceHistory}</div></section>
+        <section class="space-y-2"><h4 class="font-bold text-sm text-slate-800"><i class="fa-solid fa-cart-shopping mr-1 text-blue-600"></i>ECサイトで探す</h4><div class="grid grid-cols-2 gap-2"><a target="_blank" rel="noopener noreferrer" href="https://www.amazon.co.jp/s?k=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50"><i class="fa-brands fa-amazon mr-1"></i>Amazon</a><a target="_blank" rel="noopener noreferrer" href="https://search.rakuten.co.jp/search/mall/${q}/" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50">楽天市場</a><a target="_blank" rel="noopener noreferrer" href="https://shopping.yahoo.co.jp/search?p=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50">Yahoo!ショッピング</a><a target="_blank" rel="noopener noreferrer" href="https://www.google.com/search?tbm=shop&q=${q}" class="text-center rounded-lg border border-slate-200 p-2 text-xs font-semibold hover:bg-slate-50"><i class="fa-brands fa-google mr-1"></i>Google商品検索</a></div></section>`;
+      const editBtn = document.getElementById('detailEditButton');
+      editBtn.classList.toggle('hidden', item.dbType === 'personal' && !currentUser);
+      document.getElementById('detailModal').classList.remove('hidden');
+    }
+    function closeDetailModal() { document.getElementById('detailModal').classList.add('hidden'); }
+    function editItemFromDetail() {
+      if (!detailItemId) return;
+      const id = detailItemId;
+      closeDetailModal();
+      editItem(id);
     }
 
     function copyJan(jan) {
@@ -552,6 +590,12 @@
     // --- JANコードカメラ読み取り（JAN Master ProのQuagga2方式） ---
     function openScanModal() {
       scanPurpose = 'register';
+      document.getElementById('scanModal').classList.remove('hidden');
+      startScanCamera();
+    }
+
+    function openJanFieldScanModal() {
+      scanPurpose = 'registerField';
       document.getElementById('scanModal').classList.remove('hidden');
       startScanCamera();
     }
@@ -657,6 +701,11 @@
           renderItems();
           searchInput.focus();
           document.getElementById('scanStatus').textContent = '検索コード：' + code;
+          scanPurpose = 'register';
+        } else if (scanPurpose === 'registerField') {
+          document.getElementById('formJan').value = code;
+          document.getElementById('scanStatus').textContent = 'JAN入力完了：' + code;
+          document.getElementById('formJan').focus();
           scanPurpose = 'register';
         } else {
           openItemModalWithJan(code);
