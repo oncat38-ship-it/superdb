@@ -106,10 +106,8 @@
           <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
           <input type="text" id="searchInput" oninput="filterItems()" placeholder="商品名、JANコード、店舗名で検索..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
-        <!-- タグバッジ一覧 -->
-        <div id="tagContainer" class="flex flex-wrap gap-1.5 pt-0.5 text-xs">
-          <!-- JS動的生成 -->
-        </div>
+        <!-- タグは一覧に並べず、登録時の入力候補としてのみ表示 -->
+        <div id="tagContainer" class="hidden"></div>
       </div>
 
       <!-- 商品グリッドカード -->
@@ -172,8 +170,8 @@
             <input type="text" id="formJan" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="4900000000000">
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">タグ (カンマ区切り)</label>
-            <input type="text" id="formTags" autocomplete="off" oninput="renderTagSuggestions()" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料, 特売">
+            <label class="block font-medium text-slate-700 mb-1">タグ（「,」または「、」で区切り）</label>
+            <input type="text" id="formTags" autocomplete="off" oninput="renderTagSuggestions()" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="飲料、特売">
             <div id="tagSuggestions" class="flex flex-wrap gap-1 mt-1"></div>
           </div>
         </div>
@@ -267,6 +265,7 @@
     let lastScanCode = '';
     let lastScanCount = 0;
     let lastScanAt = 0;
+    let scanQualitySum = 0;
     let scanSessionId = 0;
     let scanConfirmed = false;
 
@@ -453,133 +452,92 @@
     // --- 商品表示ロジック ---
     function renderItems() {
       const container = document.getElementById('itemList');
-      const search = document.getElementById('searchInput').value.toLowerCase();
-
+      const search = document.getElementById('searchInput').value.trim().toLowerCase();
       const filtered = localItems.filter(item => {
         if (item.dbType !== currentDbType) return false;
-        if (selectedTag && (!item.tags || !item.tags.includes(selectedTag))) return false;
         if (search) {
-          const matchName = [item.maker, item.name, item.flavor, item.content].filter(Boolean).join(' ').toLowerCase().includes(search);
-          const matchJan = item.jan && item.jan.includes(search);
-          const matchStore = item.stores && item.stores.some(s => [s.name, s.branch].filter(Boolean).join(' ').toLowerCase().includes(search));
-          return matchName || matchJan || matchStore;
+          const nameText = [item.maker, item.name, item.flavor, item.content].filter(Boolean).join(' ').toLowerCase();
+          const matchJan = item.jan && String(item.jan).includes(search);
+          const matchStore = item.stores && item.stores.some(st => [st.name, st.branch].filter(Boolean).join(' ').toLowerCase().includes(search));
+          const matchTags = (item.tags || []).some(tag => String(tag).toLowerCase().includes(search));
+          return nameText.includes(search) || matchJan || matchStore || matchTags;
         }
         return true;
       });
-
-      if (filtered.length === 0) {
-        container.innerHTML = `
-          <div class="col-span-full py-16 text-center text-slate-400 space-y-2">
-            <i class="fa-solid fa-box-open text-3xl"></i>
-            <p class="text-xs">条件に一致する商品はありません</p>
-          </div>
-        `;
+      if (!filtered.length) {
+        container.innerHTML = `<div class="col-span-full py-10 text-center text-slate-400"><i class="fa-solid fa-box-open text-2xl"></i><p class="text-xs mt-2">条件に一致する商品はありません</p></div>`;
         return;
       }
-
+      container.className = 'flex flex-col gap-2';
       container.innerHTML = filtered.map(item => {
-        let lowestStore = null;
-        if (item.stores && item.stores.length > 0) {
-          lowestStore = item.stores.reduce((prev, curr) => (Number(prev.price) < Number(curr.price)) ? prev : curr);
-        }
-
-        const tagBadges = (item.tags || []).map(t => 
-          `<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-medium">#${t}</span>`
-        ).join(" ");
-
-        const q = encodeURIComponent(item.jan || item.name);
-        const amzTag = appSettings.amazonTag ? `&tag=${appSettings.amazonTag}` : '';
-        const amazonUrl = `https://www.amazon.co.jp/s?k=${q}${amzTag}`;
-        const rakutenUrl = `https://search.rakuten.co.jp/search/mall/${q}/`;
-        const yahooUrl = `https://shopping.yahoo.co.jp/search?p=${q}`;
-
+        const maker = item.maker ? `<p class="text-[10px] leading-tight text-slate-400">${escapeHtml(item.maker)}</p>` : '';
+        const flavor = item.flavor ? `<p class="text-[11px] leading-tight text-slate-600">${escapeHtml(item.flavor)}</p>` : '';
+        const content = item.content ? `<span class="text-[10px] text-slate-400">${escapeHtml(item.content)}</span>` : '';
+        const jan = item.jan ? escapeHtml(item.jan) : 'JAN未登録';
+        const safeId = String(item.id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         return `
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 flex flex-col justify-between space-y-3">
-            <div>
-              <div class="flex justify-between items-start gap-2 mb-1">
-                <div class="min-w-0 flex-1 leading-tight">
-                  ${item.maker ? `<p class="text-[10px] text-slate-400 font-medium mb-0.5">${escapeHtml(item.maker)}</p>` : ''}
-                  <h3 class="font-bold text-slate-900 text-base leading-snug break-words">${escapeHtml(item.name || '')}</h3>
-                  ${item.flavor ? `<p class="text-xs text-slate-600 mt-0.5">${escapeHtml(item.flavor)}</p>` : ''}
-                  ${item.content ? `<p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(item.content)}</p>` : ''}
-                </div>
-                <button onclick="editItem('${item.id}')" class="text-slate-400 hover:text-blue-600 text-xs p-1 shrink-0" title="編集・削除">
-                  <i class="fa-solid fa-pen"></i>
-                </button>
-              </div>
-              <p class="text-[11px] text-slate-400 font-mono mb-2">JAN: ${item.jan || '未設定'}</p>
-              <div class="flex flex-wrap gap-1 mb-3">${tagBadges}</div>
-
-              <!-- 実店舗最安値ボックス -->
-              <div class="bg-blue-50/60 rounded-lg p-2.5 border border-blue-100 text-xs space-y-1">
-                <div class="flex justify-between text-slate-500 text-[11px]">
-                  <span>店舗最安値</span>
-                  <span>${lowestStore ? lowestStore.date : '-'}</span>
-                </div>
-                <div class="flex justify-between items-baseline">
-                  <span class="font-bold text-slate-800 text-xs">${lowestStore ? escapeHtml([lowestStore.name, lowestStore.branch].filter(Boolean).join(' ')) : '未記録'}</span>
-                  <span class="text-blue-700 font-extrabold text-base">${lowestStore ? '¥' + Number(lowestStore.price).toLocaleString() : '-'}</span>
-                </div>
-              </div>
-
-              ${item.memo ? `<p class="text-[11px] text-slate-500 mt-2 bg-slate-50 p-2 rounded border border-slate-100">${item.memo}</p>` : ''}
+          <article class="bg-white rounded-lg border border-slate-200 px-3 py-2.5 flex items-center gap-3 min-w-0">
+            <div class="flex-1 min-w-0 space-y-0.5">
+              ${maker}
+              <h3 class="font-bold text-slate-900 text-sm leading-snug break-words">${escapeHtml(item.name || '名称未設定')}</h3>
+              ${flavor}
+              ${content}
+              <div class="text-[10px] text-slate-500 font-mono pt-0.5">JAN: ${jan}</div>
             </div>
-
-            <!-- ECサイト検索・アフィリエイトボタン -->
-            <div class="pt-2 border-t border-slate-100">
-              <p class="text-[10px] text-slate-400 font-medium mb-1.5">EC最安値・購入リンク</p>
-              <div class="grid grid-cols-3 gap-1.5 text-center text-[11px]">
-                <a href="${amazonUrl}" target="_blank" rel="noopener noreferrer" class="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 py-1.5 rounded font-medium transition">Amazon</a>
-                <a href="${rakutenUrl}" target="_blank" rel="noopener noreferrer" class="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 py-1.5 rounded font-medium transition">楽天</a>
-                <a href="${yahooUrl}" target="_blank" rel="noopener noreferrer" class="bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 py-1.5 rounded font-medium transition">Yahoo!</a>
-              </div>
+            <div class="flex flex-col gap-1 shrink-0">
+              <button type="button" onclick="editItem('${safeId}')" class="px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold"><i class="fa-solid fa-circle-info mr-1"></i>詳細</button>
+              ${item.jan ? `<button type="button" onclick="copyJan('${String(item.jan).replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-md border border-slate-200 text-slate-500 text-[10px]"><i class="fa-regular fa-copy mr-1"></i>JAN</button>` : ''}
             </div>
-          </div>
-        `;
+          </article>`;
       }).join('');
     }
 
-    // --- タグ操作 ---
+    function copyJan(jan) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(String(jan)).then(() => alert('JANコードをコピーしました')).catch(() => prompt('JANコードをコピーしてください', jan));
+      } else {
+        prompt('JANコードをコピーしてください', jan);
+      }
+    }
+
+    // --- タグ操作：全タグ一覧は表示せず、入力文字に合う候補だけ予測表示 ---
     function renderTags() {
-      const allTags = new Set();
-      localItems.forEach(i => (i.tags || []).forEach(t => allTags.add(t)));
-
       const container = document.getElementById('tagContainer');
-      container.innerHTML = Array.from(allTags).map(tag => `
-        <button onclick="toggleTag('${tag}')" class="px-2.5 py-1 rounded-full border ${selectedTag === tag ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 text-slate-600 border-slate-200'} transition">
-          #${tag}
-        </button>
-      `).join('');
+      if (container) container.innerHTML = '';
     }
+    function toggleTag(tag) { /* タグは入力時の予測候補として利用 */ }
+    function filterItems() { renderItems(); }
 
-    function toggleTag(tag) {
-      selectedTag = selectedTag === tag ? null : tag;
-      renderTags();
-      renderItems();
-    }
-
-    function filterItems() {
-      renderItems();
+    function splitTags(value) {
+      return [...new Set(String(value || '').split(/[,、]/).map(t => t.trim()).filter(Boolean))];
     }
 
     function renderTagSuggestions() {
       const input = document.getElementById('formTags');
       const box = document.getElementById('tagSuggestions');
       if (!input || !box) return;
-      const pieces = input.value.split(',');
-      const current = (pieces[pieces.length - 1] || '').trim().toLowerCase();
-      const used = pieces.slice(0, -1).map(t => t.trim().toLowerCase()).filter(Boolean);
+      const value = input.value;
+      const parts = value.split(/[,、]/);
+      const current = (parts[parts.length - 1] || '').trim().toLowerCase();
+      const used = parts.slice(0, -1).map(t => t.trim().toLowerCase()).filter(Boolean);
+      // 入力が空のときは候補を大量表示しない。入力文字に一致する既存タグだけ候補に出す。
+      if (!current) { box.innerHTML = ''; return; }
       const all = new Set();
       localItems.forEach(item => (item.tags || []).forEach(tag => all.add(String(tag))));
-      const suggestions = [...all].filter(tag => !used.includes(tag.toLowerCase()) && (!current || tag.toLowerCase().includes(current))).slice(0, 8);
-      box.innerHTML = suggestions.map(tag => `<button type="button" class="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 text-[10px]" onclick="addTagSuggestion('${escapeHtml(tag).replace(/'/g, '&#39;')}')">+ ${escapeHtml(tag)}</button>`).join('');
+      const suggestions = [...all]
+        .filter(tag => !used.includes(tag.toLowerCase()) && tag.toLowerCase().includes(current))
+        .sort((a, b) => (a.toLowerCase().startsWith(current) ? 0 : 1) - (b.toLowerCase().startsWith(current) ? 0 : 1))
+        .slice(0, 5);
+      box.innerHTML = suggestions.map(tag => `<button type="button" class="px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100 text-[10px]" onclick="addTagSuggestion('${escapeHtml(tag).replace(/'/g, '&#39;')}')">${escapeHtml(tag)}</button>`).join('');
     }
 
     function addTagSuggestion(tag) {
       const input = document.getElementById('formTags');
-      const pieces = input.value.split(',').map(t => t.trim()).filter(Boolean);
-      if (!pieces.some(t => t.toLowerCase() === tag.toLowerCase())) pieces.push(tag);
-      input.value = pieces.join(', ') + ', ';
+      const parts = input.value.split(/[,、]/);
+      parts.pop();
+      const existing = parts.map(t => t.trim()).filter(Boolean);
+      if (!existing.some(t => t.toLowerCase() === tag.toLowerCase())) existing.push(tag);
+      input.value = existing.join('、') + '、';
       input.focus();
       renderTagSuggestions();
     }
@@ -612,11 +570,11 @@
       try {
         try { Quagga.offDetected(onScanDetected); Quagga.stop(); } catch (_) {}
         Quagga.init({
-          inputStream: { name: 'Live', type: 'LiveStream', target: reader, constraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
-          locator: { patchSize: 'large', halfSample: false },
-          numOfWorkers: navigator.hardwareConcurrency ? Math.min(4, navigator.hardwareConcurrency) : 2,
-          frequency: 12,
-          decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader'] },
+          inputStream: { name: 'Live', type: 'LiveStream', target: reader, constraints: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, aspectRatio: { ideal: 1.777 } }, area: { top: '28%', right: '6%', left: '6%', bottom: '28%' } },
+          locator: { patchSize: 'medium', halfSample: false },
+          numOfWorkers: navigator.hardwareConcurrency ? Math.min(3, Math.max(1, navigator.hardwareConcurrency - 1)) : 2,
+          frequency: 15,
+          decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'i2of5_reader'] },
           locate: true
         }, err => {
           if (thisSession !== scanSessionId) { try { Quagga.stop(); } catch (_) {} return; }
@@ -632,7 +590,7 @@
             Quagga.start();
             scannerActive = true;
             scannerStarting = false;
-            status.textContent = 'JANを緑の枠内に水平に合わせ、反射を避けてください。2回連続で一致すると自動停止します。';
+            status.textContent = 'バーコード全体を緑の枠に水平に合わせ、ピントが合うまで静止してください。3回連続で一致すると停止します。';
             const track = Quagga.CameraAccess && Quagga.CameraAccess.getActiveTrack ? Quagga.CameraAccess.getActiveTrack() : null;
             if (track && track.applyConstraints) {
               const caps = track.getCapabilities ? track.getCapabilities() : {};
@@ -667,10 +625,11 @@
       const code = String(raw || '').replace(/\D/g, '');
       if (!validJanOrItf(code)) return;
       const now = Date.now();
-      if (code === lastScanCode && now - lastScanAt < 2200) lastScanCount++;
-      else { lastScanCode = code; lastScanCount = 1; }
+      if (code === lastScanCode && now - lastScanAt < 2600) lastScanCount++;
+      else { lastScanCode = code; lastScanCount = 1; scanQualitySum = 0; }
       lastScanAt = now;
-      if (lastScanCount < 2) return;
+      // チェックデジットが正しい同一コードを3回連続で検出した場合だけ確定する。
+      if (lastScanCount < 3) return;
       scanConfirmed = true;
       lastScanCount = 0;
       document.getElementById('scanStatus').textContent = '読み取り成功：' + code + '（カメラ停止中…）';
@@ -696,7 +655,7 @@
 
     function restartScanCamera() {
       stopScanCamera();
-      lastScanCode = ''; lastScanCount = 0; lastScanAt = 0; scanConfirmed = false;
+      lastScanCode = ''; lastScanCount = 0; lastScanAt = 0; scanQualitySum = 0; scanConfirmed = false;
       startScanCamera();
     }
 
@@ -800,7 +759,7 @@
       document.getElementById('formFlavor').value = item.flavor || '';
       document.getElementById('formContent').value = item.content || '';
       document.getElementById('formJan').value = item.jan || '';
-      document.getElementById('formTags').value = (item.tags || []).join(', ');
+      document.getElementById('formTags').value = (item.tags || []).join('、');
       document.getElementById('formMemo').value = item.memo || '';
       if (item.stores && item.stores.length > 0) {
         const latestStore = [...item.stores].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
@@ -834,7 +793,7 @@
       const date = document.getElementById('formDate').value || new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
       const memo = document.getElementById('formMemo').value;
 
-      const tags = tagsStr ? [...new Set(tagsStr.split(',').map(t => t.trim()).filter(Boolean))] : [];
+      const tags = splitTags(tagsStr);
       const idx = localItems.findIndex(i => i.id === id);
       const existing = idx >= 0 ? localItems[idx] : null;
       // 編集時は過去の店舗価格を保持。入力された店舗だけを追加・更新する。
