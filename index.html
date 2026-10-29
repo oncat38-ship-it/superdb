@@ -104,7 +104,8 @@
       <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-3">
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
-          <input type="text" id="searchInput" oninput="filterItems()" placeholder="商品名、JANコード、店舗名で検索..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <input type="text" id="searchInput" oninput="filterItems()" placeholder="商品名、JANコード、店舗名で検索..." class="w-full pl-10 pr-12 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <button type="button" onclick="openSearchScanModal()" title="カメラでJAN検索" aria-label="カメラでJAN検索" class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-blue-600 hover:bg-blue-50"><i class="fa-solid fa-camera"></i></button>
         </div>
         <!-- タグは一覧に並べず、登録時の入力候補としてのみ表示 -->
         <div id="tagContainer" class="hidden"></div>
@@ -181,8 +182,9 @@
           <div class="grid grid-cols-2 gap-2">
             <div><label class="block text-[10px] text-slate-500 mb-1">店舗名</label><input type="text" id="formStore" placeholder="例：イオン" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
             <div><label class="block text-[10px] text-slate-500 mb-1">支店・店舗名</label><input type="text" id="formBranch" placeholder="例：名古屋駅前店" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
-            <div><label class="block text-[10px] text-slate-500 mb-1">価格（円）</label><input type="number" id="formPrice" placeholder="価格" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
-            <div><label class="block text-[10px] text-slate-500 mb-1">記録日</label><input type="date" id="formDate" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
+            <div><label class="block text-[10px] text-slate-500 mb-1">価格（税抜・円）</label><input type="number" id="formPrice" min="0" step="1" placeholder="税抜価格" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
+            <div><label class="block text-[10px] text-slate-500 mb-1">商品区分（消費税）</label><select id="formTaxType" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"><option value="food">食品（8%）</option><option value="other">食品以外（10%）</option></select></div>
+            <div class="col-span-2"><label class="block text-[10px] text-slate-500 mb-1">記録日</label><input type="date" id="formDate" class="w-full p-2 border border-slate-300 rounded-lg bg-white text-xs"></div>
           </div>
         </div>
 
@@ -262,6 +264,7 @@
     let appSettings = readLocalJson('smart_item_settings', { yahooId: "", amazonTag: "" }) || { yahooId: "", amazonTag: "" };
     let scannerActive = false;
     let scannerStarting = false;
+    let scanPurpose = 'register';
     let lastScanCode = '';
     let lastScanCount = 0;
     let lastScanAt = 0;
@@ -472,16 +475,20 @@
       container.innerHTML = filtered.map(item => {
         const maker = item.maker ? `<p class="text-[10px] leading-tight text-slate-400">${escapeHtml(item.maker)}</p>` : '';
         const flavor = item.flavor ? `<p class="text-[11px] leading-tight text-slate-600">${escapeHtml(item.flavor)}</p>` : '';
-        const content = item.content ? `<span class="text-[10px] text-slate-400">${escapeHtml(item.content)}</span>` : '';
+        const content = item.content ? `<span class="text-[10px] text-slate-400 whitespace-nowrap">${escapeHtml(item.content)}</span>` : '';
         const jan = item.jan ? escapeHtml(item.jan) : 'JAN未登録';
+        const latestStore = Array.isArray(item.stores) && item.stores.length ? [...item.stores].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0] : null;
+        const price = latestStore && latestStore.price !== '' && latestStore.price != null ? Number(latestStore.price) : null;
+        const taxRate = item.taxType === 'other' ? 0.10 : 0.08;
+        const priceHtml = price !== null && Number.isFinite(price) ? `<div class="mt-1"><span class="text-xs font-bold text-slate-800">税抜 ¥${price.toLocaleString('ja-JP')}</span> <span class="text-[10px] text-slate-500">税込 ¥${Math.round(price * (1 + taxRate)).toLocaleString('ja-JP')}</span></div>` : '';
         const safeId = String(item.id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         return `
           <article class="bg-white rounded-lg border border-slate-200 px-3 py-2.5 flex items-center gap-3 min-w-0">
             <div class="flex-1 min-w-0 space-y-0.5">
               ${maker}
-              <h3 class="font-bold text-slate-900 text-sm leading-snug break-words">${escapeHtml(item.name || '名称未設定')}</h3>
+              <div class="flex items-start gap-2 min-w-0"><h3 class="font-bold text-slate-900 text-sm leading-snug break-words flex-1 min-w-0">${escapeHtml(item.name || '名称未設定')}</h3>${content ? `<span class="shrink-0 pt-0.5">${content}</span>` : ''}</div>
               ${flavor}
-              ${content}
+              ${priceHtml}
               <div class="text-[10px] text-slate-500 font-mono pt-0.5">JAN: ${jan}</div>
             </div>
             <div class="flex flex-col gap-1 shrink-0">
@@ -544,6 +551,13 @@
 
     // --- JANコードカメラ読み取り（JAN Master ProのQuagga2方式） ---
     function openScanModal() {
+      scanPurpose = 'register';
+      document.getElementById('scanModal').classList.remove('hidden');
+      startScanCamera();
+    }
+
+    function openSearchScanModal() {
+      scanPurpose = 'search';
       document.getElementById('scanModal').classList.remove('hidden');
       startScanCamera();
     }
@@ -637,7 +651,16 @@
       setTimeout(() => {
         const modal = document.getElementById('scanModal');
         if (modal && !modal.classList.contains('hidden')) modal.classList.add('hidden');
-        openItemModalWithJan(code);
+        if (scanPurpose === 'search') {
+          const searchInput = document.getElementById('searchInput');
+          searchInput.value = code;
+          renderItems();
+          searchInput.focus();
+          document.getElementById('scanStatus').textContent = '検索コード：' + code;
+          scanPurpose = 'register';
+        } else {
+          openItemModalWithJan(code);
+        }
       }, 120);
     }
 
@@ -736,6 +759,7 @@
         return;
       }
       document.getElementById('itemForm').reset();
+      document.getElementById('formTaxType').value = 'food';
       document.getElementById('editItemId').value = '';
       document.getElementById('modalTitle').textContent = '商品を新規登録';
       document.getElementById('deleteBtn').classList.add('hidden');
@@ -758,6 +782,7 @@
       document.getElementById('formName').value = item.name || '';
       document.getElementById('formFlavor').value = item.flavor || '';
       document.getElementById('formContent').value = item.content || '';
+      document.getElementById('formTaxType').value = item.taxType === 'other' ? 'other' : 'food';
       document.getElementById('formJan').value = item.jan || '';
       document.getElementById('formTags').value = (item.tags || []).join('、');
       document.getElementById('formMemo').value = item.memo || '';
@@ -785,6 +810,7 @@
       const name = document.getElementById('formName').value.trim();
       const flavor = document.getElementById('formFlavor').value.trim();
       const content = document.getElementById('formContent').value.trim();
+      const taxType = document.getElementById('formTaxType').value === 'other' ? 'other' : 'food';
       const jan = document.getElementById('formJan').value;
       const tagsStr = document.getElementById('formTags').value;
       const storeName = document.getElementById('formStore').value;
@@ -806,7 +832,7 @@
         if (storeIdx >= 0) stores[storeIdx] = record;
         else stores.push(record);
       }
-      const newItem = { id, maker, name, flavor, content, jan: jan.trim(), tags, memo: memo.trim(), stores, dbType: existing ? existing.dbType : currentDbType, updatedAt: new Date().toISOString() };
+      const newItem = { id, maker, name, flavor, content, taxType, jan: jan.trim(), tags, memo: memo.trim(), stores, dbType: existing ? existing.dbType : currentDbType, updatedAt: new Date().toISOString() };
       if (idx >= 0) localItems[idx] = newItem;
       else localItems.unshift(newItem);
 
